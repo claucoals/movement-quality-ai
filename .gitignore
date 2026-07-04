@@ -2,6 +2,7 @@ data/raw/
 data/*.mp4
 data/*.npy
 data/*.csv
+data/*.pkl
 __pycache__/
 *.pyc
 .venv/
