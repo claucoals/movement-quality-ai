@@ -1,0 +1,9 @@
+data/raw/
+data/*.mp4
+data/*.npy
+data/*.csv
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+results/models/

@@ -1,0 +1,12 @@
+numpy
+pandas
+scikit-learn
+scipy
+matplotlib
+opencv-python
+mediapipe
+shap
+jupyter
+# optional, for the deep-learning baseline / MMPose route:
+# torch
+# torchvision
