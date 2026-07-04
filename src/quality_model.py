@@ -20,6 +20,7 @@ from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.model_selection import (GridSearchCV, KFold, StratifiedKFold,
                                      RepeatedKFold, RepeatedStratifiedKFold)
 from sklearn.pipeline import Pipeline
@@ -44,6 +45,11 @@ def build_models(task: str, seed: int):
                    {"m__n_estimators": [300, 600, 900],
                     "m__max_depth": [None, 3, 5, 10],
                     "m__min_samples_leaf": [1, 2, 4]}),
+            "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                              ("sc", StandardScaler()),
+                              ("m", MLPRegressor(max_iter=3000, random_state=seed))]),
+                    {"m__hidden_layer_sizes": [(16,), (32,), (32, 16)],
+                     "m__alpha": [0.001, 0.01, 0.1, 1.0]}),
         }
     return {
         "dummy": (Pipeline([("imp", SimpleImputer(strategy="median")),
@@ -56,6 +62,11 @@ def build_models(task: str, seed: int):
                          ("sc", StandardScaler()),
                          ("m", RandomForestClassifier(random_state=seed))]),
                {"m__n_estimators": [300, 600], "m__max_depth": [None, 5, 10]}),
+        "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                          ("sc", StandardScaler()),
+                          ("m", MLPClassifier(max_iter=3000, random_state=seed))]),
+                {"m__hidden_layer_sizes": [(16,), (32,), (32, 16)],
+                 "m__alpha": [0.001, 0.01, 0.1, 1.0]}),
     }
 
 

@@ -57,15 +57,26 @@ movement-quality-ai/
 ├── README.md
 ├── requirements.txt
 ├── .gitignore
-├── docs/ROADMAP.md
-├── data/                     # access scripts only
-├── notebooks/                # EDA, results, Pilates demo
+├── docs/
+│   ├── ROADMAP.md
+│   └── tesi.md                       # two-sentence project thesis (Fase 0)
+├── data/                              # gitignored: raw KIMORE pkl + derived CSVs
+├── notebooks/
+│   ├── 01_eda_kimore.ipynb            # Fase 1: subjects, cTS distribution, sanity checks
+│   ├── 02_feature_check_ex5.ipynb     # univariate feature-vs-cTS correlation
+│   ├── 03_pairwise_relative_check.ipynb  # CoRe-style relative check, permutation test
+│   └── 04_classification_check.ipynb  # good/bad classification, permutation test
 ├── src/
-│   ├── data_access.py        # KIMORE / UI-PRMD access instructions
-│   ├── pose_to_features.py   # video -> joint angles -> features (MediaPipe)
-│   └── quality_model.py      # nested CV: regression & classification
-├── results/
-└── MODEL_CARD.md
+│   ├── data_access.py                 # KIMORE / UI-PRMD access instructions
+│   ├── pose_to_features.py            # video -> joint angles -> features (MediaPipe)
+│   ├── build_features_ex5.py          # ex5 kinematic features (ROM, velocity, tempo)
+│   ├── build_features_pooled.py       # same features, all 5 exercises pooled
+│   ├── build_features_trajectory.py   # whole-trajectory PCA + frequency-domain features
+│   ├── build_features_trunk.py        # trunk/pelvis flexion-lean-rotation features
+│   ├── build_features_smoothness.py   # movement-smoothness (jerk) features
+│   ├── univariate_check.py            # per-feature Spearman vs target, no CV
+│   └── quality_model.py               # nested CV: regression & classification
+└── MODEL_CARD.md                      # current honest performance status
 ```
 
 ## Key references
