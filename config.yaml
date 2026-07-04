@@ -145,3 +145,51 @@ datasets:
     task: classification
     groups: subject
     status: active
+
+  # named joint-angle features (build_features_rehab24_anatomical.py): the joint mapping
+  # for REHAB24-6's 26 keypoints (data/ui_prmd/joints_names.txt, from the dataset's Zenodo
+  # record) is a standard mocap hierarchy, confirmed anatomically plausible. Replaces opaque
+  # PCA components with named angles (knee, hip, elbow, shoulder, trunk, ankle, knee valgus)
+  # - directly serves the project's own interpretability thesis (Pillar 1). Univariate check
+  # shows a much stronger, broader signal than any PCA-based feature set on every exercise.
+  - name: rehab24_ex1_anatomical
+    features: data/features_rehab24_ex1_anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex2_anatomical
+    features: data/features_rehab24_ex2_anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3_anatomical
+    features: data/features_rehab24_ex3_anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4_anatomical
+    features: data/features_rehab24_ex4_anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5_anatomical
+    features: data/features_rehab24_ex5_anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6_anatomical
+    features: data/features_rehab24_ex6_anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
