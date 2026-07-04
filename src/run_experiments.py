@@ -32,14 +32,15 @@ def run_dataset(entry: dict, cv_cfg: dict, seed: int) -> pd.DataFrame:
     drop_cols = [entry["target"]] + ([groups_col] if groups_col else [])
     X = df.drop(columns=drop_cols).select_dtypes(include=[np.number])
     repeats = entry.get("repeats", cv_cfg["repeats"])
+    outer = entry.get("outer_splits", cv_cfg["outer_splits"])
 
     print(f"[{entry['name']}] {X.shape[0]} samples, {X.shape[1]} features, task={entry['task']}, "
-          f"repeats={repeats}"
+          f"outer={outer}, repeats={repeats}"
           + (f", groups={groups_col} ({groups.nunique()})" if groups is not None else ", no groups"))
 
     results = nested_cv(
         X, y, task=entry["task"], seed=seed,
-        outer=cv_cfg["outer_splits"], inner=cv_cfg["inner_splits"], repeats=repeats,
+        outer=outer, inner=cv_cfg["inner_splits"], repeats=repeats,
         groups=groups, verbose=False,
     )
     return results_to_frame(

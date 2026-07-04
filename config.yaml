@@ -193,3 +193,20 @@ datasets:
     task: classification
     groups: subject
     status: active
+
+  # leave-one-exercise-out: same anatomical features, pooled across all 6 exercises, but
+  # groups=exercise instead of groups=subject - train on 5 exercise types, test on the 6th,
+  # completely unseen. A small-scale, already-available proxy for Pillar 3 (domain transfer:
+  # does "correct execution" generalize across movement types, not just across subjects).
+  # outer_splits=6 with exactly 6 groups means one exercise per fold, deterministically, so
+  # repeats>1 would just recompute the identical split - repeats:1 is correct here, not a
+  # rigor shortcut.
+  - name: rehab24_pooled_leave_one_exercise_out
+    features: data/features_rehab24_pooled_anatomical.csv
+    target: correct
+    task: classification
+    groups: exercise
+    outer_splits: 6
+    repeats: 1
+    status: active
+    note: Pillar 3 proxy - cross-exercise transfer, not cross-subject
