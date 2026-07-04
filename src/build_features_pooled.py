@@ -1,13 +1,16 @@
 """
-Kinematic features for KIMORE ex5 (squat), one row per subject.
+Same kinematic features as build_features_ex5.py (knee/hip angle ROM, velocity,
+tempo), computed on all 5 KIMORE exercises instead of only ex5, one row per
+subject per exercise. cTS is the same per-subject clinical score regardless of
+exercise, so this is a diagnostic: does the knee/hip signal correlate with cTS
+in any exercise, or only (or nowhere) in the squat?
 
-Mirrors the angle logic in pose_to_features.py (angle at a joint from the two
-adjacent joints), but reads KIMORE's Kinect skeleton arrays instead of
-MediaPipe landmarks. Each joint cell is an array (n_frames, 7) =
-[qx, qy, qz, qw, x, y, z]; only the xyz position (columns 4:7) is used.
+Note: rows from the same subject across exercises are not independent (same
+person, same cTS) - fine for a univariate correlation check, but must be kept
+in mind before using this for CV (needs grouping by subject, not by row).
 
 Usage:
-    python src/build_features_ex5.py
+    python src/build_features_pooled.py
 """
 
 from __future__ import annotations
@@ -19,9 +22,8 @@ from scipy.signal import find_peaks
 
 ROOT = Path(__file__).resolve().parents[1]
 PKL_PATH = ROOT / "data" / "kimore_exercise_dataset.pkl"
-OUT_PATH = ROOT / "data" / "features_ex5.csv"
+OUT_PATH = ROOT / "data" / "features_pooled.csv"
 
-# angle is measured at the middle joint (vertex), lower-body only: relevant for a squat
 ANGLE_DEFS = {
     "knee_left":  ("hipleft", "kneeleft", "ankleleft"),
     "knee_right": ("hipright", "kneeright", "ankleright"),
@@ -42,13 +44,7 @@ def angle_series(row: pd.Series, a: str, b: str, c: str) -> np.ndarray:
 
 
 def rep_tempo_features(knee_angle: np.ndarray) -> dict:
-    """Count squat repetitions from the troughs (deepest knee bend) of the angle
-    signal, and describe how long/regular each rep is. Frame counts differ a lot
-    across subjects (see the EDA notebook), so durations are expressed as a
-    fraction of the subject's own recording length, not raw frame counts."""
     n = len(knee_angle)
-    # prominence/distance are in degrees/frames but scaled to this signal, so a
-    # genuine squat trough is picked up regardless of how long the recording is
     troughs, _ = find_peaks(-knee_angle, prominence=10, distance=max(n // 30, 5))
     if len(troughs) < 2:
         return {"n_reps": len(troughs), "rep_dur_mean": np.nan, "rep_dur_std": np.nan}
@@ -66,7 +62,7 @@ def subject_features(row: pd.Series) -> dict:
     for name, (a, b, c) in ANGLE_DEFS.items():
         s = angle_series(row, a, b, c)
         angle_signals[name] = s
-        v = np.diff(s)  # angular velocity, degrees/frame
+        v = np.diff(s)
         feats[f"{name}_min"] = s.min()
         feats[f"{name}_max"] = s.max()
         feats[f"{name}_rom"] = s.max() - s.min()
@@ -86,15 +82,20 @@ def subject_features(row: pd.Series) -> dict:
 def main():
     with open(PKL_PATH, "rb") as f:
         data = pickle.load(f)
-    ex5 = data["ex5"]
 
-    rows = [subject_features(row) for _, row in ex5.iterrows()]
-    out = pd.DataFrame(rows)
-    out["cTS"] = ex5["cTS"].values
+    all_rows = []
+    for ex_name, ex_df in data.items():
+        for subj_i, row in ex_df.iterrows():
+            feats = subject_features(row)
+            feats["exercise"] = ex_name
+            feats["subject_id"] = f"{ex_name}_{subj_i}"
+            feats["cTS"] = row["cTS"]
+            all_rows.append(feats)
 
+    out = pd.DataFrame(all_rows)
     out.to_csv(OUT_PATH, index=False)
-    print(f"{out.shape[0]} soggetti, {out.shape[1] - 1} feature + target -> {OUT_PATH}")
-    print(out.describe().T[["min", "mean", "max"]])
+    print(f"{out.shape[0]} righe (soggetto x esercizio), {out.shape[1] - 3} feature + cTS -> {OUT_PATH}")
+    print(out.groupby("exercise").size())
 
 
 if __name__ == "__main__":

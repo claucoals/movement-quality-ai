@@ -18,8 +18,10 @@ import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold
+from sklearn.model_selection import (GridSearchCV, KFold, StratifiedKFold,
+                                     RepeatedKFold, RepeatedStratifiedKFold)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (balanced_accuracy_score, roc_auc_score,
@@ -30,34 +32,47 @@ from scipy.stats import spearmanr
 def build_models(task: str, seed: int):
     if task == "regression":
         return {
-            "dummy": (Pipeline([("m", DummyRegressor(strategy="mean"))]), {}),
-            "ridge": (Pipeline([("sc", StandardScaler()),
+            "dummy": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                                ("m", DummyRegressor(strategy="mean"))]), {}),
+            "ridge": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                                ("sc", StandardScaler()),
                                 ("m", Ridge(random_state=seed))]),
-                      {"m__alpha": [0.1, 1, 10, 100]}),
-            "rf": (Pipeline([("sc", StandardScaler()),
+                      {"m__alpha": [0.01, 0.1, 1, 10, 100, 300]}),
+            "rf": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                             ("sc", StandardScaler()),
                              ("m", RandomForestRegressor(random_state=seed))]),
-                   {"m__n_estimators": [300, 600], "m__max_depth": [None, 5, 10]}),
+                   {"m__n_estimators": [300, 600, 900],
+                    "m__max_depth": [None, 3, 5, 10],
+                    "m__min_samples_leaf": [1, 2, 4]}),
         }
     return {
-        "logreg": (Pipeline([("sc", StandardScaler()),
+        "logreg": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                             ("sc", StandardScaler()),
                              ("m", LogisticRegression(max_iter=2000, random_state=seed))]),
                    {"m__C": [0.01, 0.1, 1, 10]}),
-        "rf": (Pipeline([("sc", StandardScaler()),
+        "rf": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                         ("sc", StandardScaler()),
                          ("m", RandomForestClassifier(random_state=seed))]),
                {"m__n_estimators": [300, 600], "m__max_depth": [None, 5, 10]}),
     }
 
 
-def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3):
+def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10):
+    """Repeated nested CV: with ~75 samples a single outer split is noisy (see fold-to-fold
+    swings of +/-0.2 in Spearman), so the outer split is repeated `repeats` times with different
+    shuffles and all runs are pooled before averaging. Slower, but the mean/std it reports are
+    actually trustworthy instead of an artifact of one lucky/unlucky split."""
     scoring = "neg_mean_absolute_error" if task == "regression" else "balanced_accuracy"
-    splitter = (KFold(outer, shuffle=True, random_state=seed) if task == "regression"
-                else StratifiedKFold(outer, shuffle=True, random_state=seed))
+    outer_splitter = (RepeatedKFold(n_splits=outer, n_repeats=repeats, random_state=seed)
+                       if task == "regression"
+                       else RepeatedStratifiedKFold(n_splits=outer, n_repeats=repeats, random_state=seed))
     results = {name: [] for name in build_models(task, seed)}
 
-    for fold, (tr, te) in enumerate(splitter.split(X, y), 1):
+    for split_i, (tr, te) in enumerate(outer_splitter.split(X, y), 1):
+        repeat_i, fold_i = divmod(split_i - 1, outer)
         Xtr, Xte, ytr, yte = X.iloc[tr], X.iloc[te], y.iloc[tr], y.iloc[te]
-        inner_cv = (KFold(inner, shuffle=True, random_state=seed) if task == "regression"
-                    else StratifiedKFold(inner, shuffle=True, random_state=seed))
+        inner_cv = (KFold(inner, shuffle=True, random_state=seed + repeat_i) if task == "regression"
+                    else StratifiedKFold(inner, shuffle=True, random_state=seed + repeat_i))
         for name, (pipe, grid) in build_models(task, seed).items():
             gs = GridSearchCV(pipe, grid, scoring=scoring, cv=inner_cv, n_jobs=-1)
             gs.fit(Xtr, ytr)
@@ -71,14 +86,14 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3):
                 except Exception:
                     auc = np.nan
                 m = {"bal_acc": balanced_accuracy_score(yte, pred), "auc": auc}
-            m["fold"] = fold
+            m["repeat"], m["fold"] = repeat_i + 1, fold_i + 1
             results[name].append(m)
-            print(f"[fold {fold}] {name:8s} " +
-                  "  ".join(f"{k}={v:.3f}" for k, v in m.items() if k != "fold"))
+            print(f"[repeat {repeat_i + 1} fold {fold_i + 1}] {name:8s} " +
+                  "  ".join(f"{k}={v:.3f}" for k, v in m.items() if k not in ("repeat", "fold")))
 
-    print("\n=== Summary (mean +/- std over outer folds) ===")
+    print(f"\nSummary (mean +/- std over {outer} x {repeats} = {outer * repeats} outer splits)")
     for name, folds in results.items():
-        keys = [k for k in folds[0] if k != "fold"]
+        keys = [k for k in folds[0] if k not in ("repeat", "fold")]
         summ = "  ".join(
             f"{k}={np.nanmean([f[k] for f in folds]):.3f}+/-{np.nanstd([f[k] for f in folds]):.3f}"
             for k in keys)
@@ -92,13 +107,15 @@ def main():
     p.add_argument("--target", required=True)
     p.add_argument("--task", choices=["regression", "classification"], default="regression")
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--repeats", type=int, default=10,
+                    help="how many times to repeat the outer CV split (default 10, slower but stabler)")
     args = p.parse_args()
 
     df = pd.read_csv(args.features)
     y = df[args.target]
     X = df.drop(columns=[args.target]).select_dtypes(include=[np.number])
     print(f"Loaded {X.shape[0]} samples, {X.shape[1]} features. Task: {args.task}")
-    nested_cv(X, y, task=args.task, seed=args.seed)
+    nested_cv(X, y, task=args.task, seed=args.seed, repeats=args.repeats)
 
 
 if __name__ == "__main__":
