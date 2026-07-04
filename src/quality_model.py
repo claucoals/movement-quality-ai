@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import numpy as np
 import pandas as pd
+from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold
@@ -23,11 +24,13 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (balanced_accuracy_score, roc_auc_score,
                              mean_absolute_error, r2_score)
+from scipy.stats import spearmanr
 
 
 def build_models(task: str, seed: int):
     if task == "regression":
         return {
+            "dummy": (Pipeline([("m", DummyRegressor(strategy="mean"))]), {}),
             "ridge": (Pipeline([("sc", StandardScaler()),
                                 ("m", Ridge(random_state=seed))]),
                       {"m__alpha": [0.1, 1, 10, 100]}),
@@ -60,7 +63,8 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3):
             gs.fit(Xtr, ytr)
             pred = gs.predict(Xte)
             if task == "regression":
-                m = {"mae": mean_absolute_error(yte, pred), "r2": r2_score(yte, pred)}
+                m = {"mae": mean_absolute_error(yte, pred), "r2": r2_score(yte, pred),
+                     "spearman": spearmanr(yte, pred).correlation}
             else:
                 try:
                     auc = roc_auc_score(yte, gs.predict_proba(Xte)[:, 1])
@@ -72,11 +76,11 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3):
             print(f"[fold {fold}] {name:8s} " +
                   "  ".join(f"{k}={v:.3f}" for k, v in m.items() if k != "fold"))
 
-    print("\n=== Summary (mean ± std over outer folds) ===")
+    print("\n=== Summary (mean +/- std over outer folds) ===")
     for name, folds in results.items():
         keys = [k for k in folds[0] if k != "fold"]
         summ = "  ".join(
-            f"{k}={np.nanmean([f[k] for f in folds]):.3f}±{np.nanstd([f[k] for f in folds]):.3f}"
+            f"{k}={np.nanmean([f[k] for f in folds]):.3f}+/-{np.nanstd([f[k] for f in folds]):.3f}"
             for k in keys)
         print(f"{name:8s} {summ}")
     return results
