@@ -100,3 +100,48 @@ datasets:
     groups: subject
     status: active
     note: phase-segmented features (early/mid/late third of each rep), see build_features_rehab24_phases.py
+
+  # position + velocity + acceleration trajectory-PCA (build_features_rehab24_dynamics.py):
+  # the plain rehab24_exN entries above use position only; movement smoothness/jerk is a
+  # known quality marker in the motor-control literature and was missing entirely.
+  - name: rehab24_ex1_dynamics
+    features: data/features_rehab24_ex1_dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex2_dynamics
+    features: data/features_rehab24_ex2_dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3_dynamics
+    features: data/features_rehab24_ex3_dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4_dynamics
+    features: data/features_rehab24_ex4_dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5_dynamics
+    features: data/features_rehab24_ex5_dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6_dynamics
+    features: data/features_rehab24_ex6_dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active

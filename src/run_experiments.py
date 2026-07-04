@@ -52,6 +52,11 @@ def run_dataset(entry: dict, cv_cfg: dict, seed: int) -> pd.DataFrame:
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--config", default="config.yaml")
+    p.add_argument("--only", default=None,
+                    help="comma-separated dataset names to (re)run, e.g. "
+                         "rehab24_ex1_dynamics,rehab24_ex2_dynamics - skips the rest. "
+                         "Existing rows for those names in the output CSV are replaced, "
+                         "everything else in the CSV is left untouched.")
     args = p.parse_args()
 
     with open(ROOT / args.config) as f:
@@ -60,18 +65,35 @@ def main():
     cv_cfg = {"outer_splits": cfg["outer_splits"], "inner_splits": cfg["inner_splits"],
               "repeats": cfg["repeats"]}
 
+    datasets = cfg["datasets"]
+    if args.only:
+        wanted = set(args.only.split(","))
+        datasets = [e for e in datasets if e["name"] in wanted]
+        missing = wanted - {e["name"] for e in datasets}
+        if missing:
+            raise SystemExit(f"Unknown dataset name(s) in --only: {missing}")
+
     all_frames = []
-    for entry in cfg["datasets"]:
+    for entry in datasets:
         frame = run_dataset(entry, cv_cfg, cfg["seed"])
         all_frames.append(frame)
         n_combos = frame.shape[0]
         print(f"  -> {n_combos} righe (modelli x repeat x fold)")
 
-    combined = pd.concat(all_frames, ignore_index=True)
+    new_results = pd.concat(all_frames, ignore_index=True)
     out_path = ROOT / cfg["output"]
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if out_path.exists():
+        existing = pd.read_csv(out_path)
+        ran_names = new_results["dataset"].unique()
+        existing = existing[~existing["dataset"].isin(ran_names)]
+        combined = pd.concat([existing, new_results], ignore_index=True)
+    else:
+        combined = new_results
+
     combined.to_csv(out_path, index=False)
-    print(f"\n{combined.shape[0]} righe totali -> {out_path}")
+    print(f"\n{new_results.shape[0]} righe nuove/aggiornate, {combined.shape[0]} righe totali -> {out_path}")
 
 
 if __name__ == "__main__":
