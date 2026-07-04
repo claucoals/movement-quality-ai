@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import numpy as np
 import pandas as pd
-from sklearn.dummy import DummyRegressor
+from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
@@ -46,6 +46,8 @@ def build_models(task: str, seed: int):
                     "m__min_samples_leaf": [1, 2, 4]}),
         }
     return {
+        "dummy": (Pipeline([("imp", SimpleImputer(strategy="median")),
+                            ("m", DummyClassifier(strategy="stratified", random_state=seed))]), {}),
         "logreg": (Pipeline([("imp", SimpleImputer(strategy="median")),
                              ("sc", StandardScaler()),
                              ("m", LogisticRegression(max_iter=2000, random_state=seed))]),
