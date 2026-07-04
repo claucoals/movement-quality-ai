@@ -57,6 +57,10 @@ def main():
                          "rehab24_ex1_dynamics,rehab24_ex2_dynamics - skips the rest. "
                          "Existing rows for those names in the output CSV are replaced, "
                          "everything else in the CSV is left untouched.")
+    p.add_argument("--output", default=None,
+                    help="override config.yaml's output path - use a different file when "
+                         "running concurrently with another run_experiments.py process, to "
+                         "avoid both writing to results/experiments.csv at once.")
     args = p.parse_args()
 
     with open(ROOT / args.config) as f:
@@ -81,7 +85,7 @@ def main():
         print(f"  -> {n_combos} righe (modelli x repeat x fold)")
 
     new_results = pd.concat(all_frames, ignore_index=True)
-    out_path = ROOT / cfg["output"]
+    out_path = ROOT / (args.output or cfg["output"])
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if out_path.exists():
