@@ -1,0 +1,102 @@
+# Experiment grid for run_experiments.py.
+# Add/remove/edit a dataset entry to change what gets run - no code changes needed.
+#
+# groups: null means no subject id available (CV is per-row, not per-subject - see
+# MODEL_CARD for where and why that matters).
+#
+# Every dataset uses the same full rigor (repeats: 20, full hyperparameter grids in
+# quality_model.py) - robustness matters more than runtime here. "status" below is purely
+# informational (what to make of the result), it does not change how hard the CV works.
+
+seed: 42
+outer_splits: 5
+inner_splits: 3
+repeats: 20
+output: results/experiments.csv
+
+datasets:
+  - name: kimore_ex5_regression
+    features: data/features_ex5.csv
+    target: cTS
+    task: regression
+    groups: null
+    status: closed    # see MODEL_CARD: no signal found across many prior feature families
+
+  - name: kimore_ex5_classification
+    features: data/features_ex5_classification.csv
+    target: quality_label
+    task: classification
+    groups: null
+    status: closed
+
+  - name: ui_prmd_deepsquat_classification
+    features: data/features_ui_prmd_classification.csv
+    target: correct
+    task: classification
+    groups: null
+    status: indicative  # no subject id released -> leakage risk, not conclusive
+
+  - name: ui_prmd_deepsquat_regression
+    features: data/features_ui_prmd_regression.csv
+    target: quality_score
+    task: regression
+    groups: null
+    status: indicative  # quality_score is circular (GMM loglikelihood of similar data)
+
+  - name: rehab24_ex1
+    features: data/features_rehab24_ex1.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex1_ungrouped
+    features: data/features_rehab24_ex1.csv
+    target: correct
+    task: classification
+    groups: null
+    status: active
+    note: deliberately wrong split, kept only to show why groups matter (see MODEL_CARD)
+
+  - name: rehab24_ex2
+    features: data/features_rehab24_ex2.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3
+    features: data/features_rehab24_ex3.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4
+    features: data/features_rehab24_ex4.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5
+    features: data/features_rehab24_ex5.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6
+    features: data/features_rehab24_ex6.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex1_phases
+    features: data/features_rehab24_ex1_phases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+    note: phase-segmented features (early/mid/late third of each rep), see build_features_rehab24_phases.py

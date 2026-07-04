@@ -1,10 +1,6 @@
-data/raw/
-data/*.mp4
-data/*.npy
-data/*.csv
-data/*.pkl
+data/
 __pycache__/
 *.pyc
 .venv/
 .ipynb_checkpoints/
-results/models/
+results/

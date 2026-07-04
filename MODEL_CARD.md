@@ -1,51 +1,56 @@
 # Model Card
 
+## How to read this card
+Every number here is reproducible: `python src/run_experiments.py` regenerates
+`results/experiments.csv` from `config.yaml`, and `notebooks/05_experiments_analysis.ipynb`
+turns that CSV into the tables/plots this card summarizes. Nothing below is hand-typed from a
+one-off run - if a number here looks wrong, the fix is to rerun the pipeline, not edit this file.
+
+## Datasets and their status
+
+| Dataset | Status | Why |
+|---|---|---|
+| KIMORE ex5 (squat) | **closed** | 9+ independent strategies (regression, relative/pairwise, classification, MLP), all null. `cTS` is a per-subject general clinical score, identical across exercises, not exercise-specific. |
+| UI-PRMD (deep squat) | **indicative** | Strong raw signal, but the released `Data_Correct/Incorrect.csv` has no subject id (can't rule out leakage), and its `quality_score` label is a GMM log-likelihood of similarly-reduced data (partly circular). |
+| REHAB24-6 | **active** | 6 exercises, 2D pose keypoints, subject id + correct/incorrect per rep in the filename - the only dataset here where a proper subject-grouped nested CV (no subject in both train and test) is actually possible. |
+
 ## Model
-- Task: movement-quality regression (KIMORE cTS score) / good-bad classification (median split)
-- Type: kinematic features (angles, ROM, velocity, tempo, trajectory PCA, trunk, smoothness) + nested-CV model
-- Scope so far: KIMORE ex5 (squat) only, 75 subjects. UI-PRMD not yet started.
-- Version / date: Fase 2 checkpoint, 2026-07-04
+- Task: correct/incorrect classification (REHAB24, UI-PRMD) and quality-score regression (KIMORE, UI-PRMD)
+- Type: trajectory-PCA or hand-picked kinematic features -> nested-CV model (dummy / ridge or
+  logreg / random forest / MLP), see `src/quality_model.py`
+- Anti-leakage: `--groups <col>` makes both the outer and inner CV loop group-aware
+  (Group/StratifiedGroupKFold) - required whenever a subject contributes more than one row
 
 ## Data
-- Source & split: subject-level nested CV (RepeatedKFold / RepeatedStratifiedKFold, 5 outer x 10 repeats), no subject leakage across folds
-- Pose front-end: KIMORE's own Kinect v2 skeleton (25 joints, position + orientation per frame)
-- Features tried (all in `src/build_features_*.py`): joint-angle ROM/mean/std/velocity (knee, hip),
-  left-right symmetry, squat-repetition tempo, trajectory PCA + frequency-domain descriptors,
-  trunk/pelvis flexion-lean-rotation, movement smoothness (jerk/acceleration)
-- Known data limitation: `cTS` is a single per-subject clinical severity score, identical across
-  all 5 KIMORE exercises, not an exercise-specific execution score
+- KIMORE: Kinect v2 skeleton (25 joints, position+orientation/frame), `src/build_features_ex5.py`
+- UI-PRMD: Vicon, already resampled to 117 frames x 240 dims (units/joint mapping not published
+  for this specific file), `src/build_features_ui_prmd.py`
+- REHAB24-6: 2D pose keypoints (26 points), `src/build_features_rehab24.py`
+  (whole-rep trajectory PCA) and `src/build_features_rehab24_phases.py` (early/mid/late
+  thirds PCA'd separately, testing whether phase-locating the signal helps - see notebook 05)
 
-## Performance (honest, Fase 2 Check-gate 2 status: RED)
-Repeated nested CV (5x10=50 outer splits), DummyRegressor/DummyClassifier as baseline.
-
-- **Regression (cTS, continuous)**: no feature family beats the dummy baseline. Best result
-  (37 kinematic features): ridge MAE=0.077+/-0.014 vs dummy MAE=0.077+/-0.014, Spearman=0.120+/-0.220
-  (sign unstable across folds). Adding trajectory/PCA, trunk, or smoothness features does not change this.
-- **Pairwise/relative regression (CoRe-style)**: permutation-corrected family-wise test across
-  57 features, p=0.49 - no signal, absolute or relative.
-- **Classification (good/bad, median split of cTS)**: the one result that beats the baseline -
-  rf AUC=0.622+/-0.131, logreg AUC=0.599+/-0.114 vs dummy AUC=0.512+/-0.136 (59 features:
-  kinematic + trajectory/PCA). Does not survive robustness checks: adding trunk or smoothness
-  features leaves AUC flat (0.56-0.63 regardless of feature set), and a sharper tertile split
-  (top/bottom third, n=54) makes rf collapse to chance (AUC=0.505). Reported as a borderline,
-  non-robust finding, not a working model.
-- **More flexible model (MLP)**: added to rule out "wrong model class" as the explanation. In
-  regression it is clearly worse than the baseline (MAE=0.113+/-0.020 vs dummy 0.077, R2 around
-  -1.56: severe overfitting at n=75). In classification it sits inside the same 0.56-0.63 AUC
-  plateau as logreg/rf (AUC=0.586), it does not unlock anything a simpler model was missing.
-- All raw per-fold results and the univariate/permutation diagnostics behind this table are in
-  `notebooks/02-05` and the background-run logs referenced in commit messages.
+## Performance
+See `notebooks/05_experiments_analysis.ipynb` for the full table (every dataset x model, mean,
+std, and a 95% bootstrap CI over outer folds) and plots, including:
+- the direct comparison of `rehab24_ex1` (correct, subject-grouped split) against
+  `rehab24_ex1_ungrouped` (same data, split per row) - the concrete illustration of why the
+  anti-leakage rule matters, not just an assertion
+- AUC per REHAB24 exercise, to see how broadly the signal holds
+- whether phase-segmented features (`rehab24_ex1_phases`) change anything
 
 ## Interpretability
-- SHAP: not run yet (no model beats baseline convincingly enough to justify it - Fase 4 blocked
-  on Fase 2/3 first).
-- Per-phase deviation from reference: not started.
+- SHAP: not run yet - waiting until REHAB24's signal is confirmed stable across exercises
+  (Fase 4 in the playbook is downstream of a working model, which KIMORE never produced)
+- Per-phase deviation from reference: `build_features_rehab24_phases.py` is a first, rule-based
+  step in this direction (see "Le fasi del movimento aiutano?" in notebook 05)
 
 ## Intended use & limitations
-- Research / portfolio only. Not medical advice, not a substitute for a physiotherapist
-  or a qualified Pilates instructor. Self-recorded data is small and not clinically validated.
-- Current KIMORE model does not work well enough to use for anything beyond documenting the
-  attempt and the negative result honestly.
+- Research / portfolio only. Not medical advice, not a substitute for a physiotherapist or a
+  qualified Pilates instructor.
+- REHAB24's 26 keypoints have no published anatomical mapping alongside this specific file, so
+  current REHAB24 features are generic trajectory shape (PCA), not named joint angles - a real
+  limitation for the project's own interpretability thesis, to close before Fase 4.
+- Self-recorded Pilates data (Layer 2) not started.
 
 ## Ethics
 - Public datasets used under their data-use terms. Self-recorded clips only with consent.

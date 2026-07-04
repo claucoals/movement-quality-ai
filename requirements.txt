@@ -7,6 +7,7 @@ opencv-python
 mediapipe
 shap
 jupyter
+pyyaml
 # optional, for the deep-learning baseline / MMPose route:
 # torch
 # torchvision

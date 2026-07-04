@@ -22,7 +22,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.model_selection import (GridSearchCV, KFold, StratifiedKFold,
-                                     RepeatedKFold, RepeatedStratifiedKFold)
+                                     RepeatedKFold, RepeatedStratifiedKFold,
+                                     GroupKFold, StratifiedGroupKFold)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (balanced_accuracy_score, roc_auc_score,
@@ -48,7 +49,7 @@ def build_models(task: str, seed: int):
             "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
                               ("sc", StandardScaler()),
                               ("m", MLPRegressor(max_iter=3000, random_state=seed))]),
-                    {"m__hidden_layer_sizes": [(16,), (32,), (32, 16)],
+                    {"m__hidden_layer_sizes": [(16,), (32,), (32, 16), (64, 32)],
                      "m__alpha": [0.001, 0.01, 0.1, 1.0]}),
         }
     return {
@@ -61,31 +62,66 @@ def build_models(task: str, seed: int):
         "rf": (Pipeline([("imp", SimpleImputer(strategy="median")),
                          ("sc", StandardScaler()),
                          ("m", RandomForestClassifier(random_state=seed))]),
-               {"m__n_estimators": [300, 600], "m__max_depth": [None, 5, 10]}),
+               {"m__n_estimators": [300, 600, 900], "m__max_depth": [None, 5, 10]}),
         "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
                           ("sc", StandardScaler()),
                           ("m", MLPClassifier(max_iter=3000, random_state=seed))]),
-                {"m__hidden_layer_sizes": [(16,), (32,), (32, 16)],
+                {"m__hidden_layer_sizes": [(16,), (32,), (32, 16), (64, 32)],
                  "m__alpha": [0.001, 0.01, 0.1, 1.0]}),
     }
 
 
-def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10):
+def _outer_splits(X, y, groups, task, outer, repeats, seed):
+    """Yields (repeat_i, fold_i, train_idx, test_idx). When `groups` is given, uses
+    Group(Stratified)KFold so no subject ever appears in both train and test. GroupKFold
+    (regression) has no shuffle/random_state, so repeats are obtained by permuting row
+    order per repeat (which fold a group lands in depends on group order/size)."""
+    n = len(X)
+    for repeat_i in range(repeats):
+        rng = np.random.default_rng(seed + repeat_i)
+        if groups is not None:
+            if task == "classification":
+                splitter = StratifiedGroupKFold(n_splits=outer, shuffle=True, random_state=seed + repeat_i)
+                split_iter = splitter.split(X, y, groups=groups)
+            else:
+                perm = rng.permutation(n)
+                splitter = GroupKFold(n_splits=outer)
+                split_iter = ((perm[tr], perm[te]) for tr, te in
+                              splitter.split(X.iloc[perm], y.iloc[perm], groups=groups.iloc[perm]))
+        else:
+            splitter = (StratifiedKFold(n_splits=outer, shuffle=True, random_state=seed + repeat_i)
+                        if task == "classification"
+                        else KFold(n_splits=outer, shuffle=True, random_state=seed + repeat_i))
+            split_iter = splitter.split(X, y)
+        for fold_i, (tr, te) in enumerate(split_iter):
+            yield repeat_i, fold_i, tr, te
+
+
+def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10, groups=None, verbose=True):
     """Repeated nested CV: with ~75 samples a single outer split is noisy (see fold-to-fold
     swings of +/-0.2 in Spearman), so the outer split is repeated `repeats` times with different
     shuffles and all runs are pooled before averaging. Slower, but the mean/std it reports are
-    actually trustworthy instead of an artifact of one lucky/unlucky split."""
+    actually trustworthy instead of an artifact of one lucky/unlucky split.
+
+    If `groups` (e.g. subject id) is given, both outer and inner splits are group-aware
+    (Group/StratifiedGroupKFold): no subject ever appears in both train and test, in either
+    loop - the anti-leakage rule this kind of project lives or dies by.
+
+    Returns {model_name: [per-fold metric dict, ...]} - the raw numbers, not a printed
+    summary. Callers (main() here, or run_experiments.py) are responsible for saving or
+    printing them; this function does not decide where results end up."""
     scoring = "neg_mean_absolute_error" if task == "regression" else "balanced_accuracy"
-    outer_splitter = (RepeatedKFold(n_splits=outer, n_repeats=repeats, random_state=seed)
-                       if task == "regression"
-                       else RepeatedStratifiedKFold(n_splits=outer, n_repeats=repeats, random_state=seed))
     results = {name: [] for name in build_models(task, seed)}
 
-    for split_i, (tr, te) in enumerate(outer_splitter.split(X, y), 1):
-        repeat_i, fold_i = divmod(split_i - 1, outer)
+    for repeat_i, fold_i, tr, te in _outer_splits(X, y, groups, task, outer, repeats, seed):
         Xtr, Xte, ytr, yte = X.iloc[tr], X.iloc[te], y.iloc[tr], y.iloc[te]
-        inner_cv = (KFold(inner, shuffle=True, random_state=seed + repeat_i) if task == "regression"
-                    else StratifiedKFold(inner, shuffle=True, random_state=seed + repeat_i))
+        groups_tr = groups.iloc[tr] if groups is not None else None
+        if groups is not None:
+            inner_cv = list(_outer_splits(Xtr, ytr, groups_tr, task, inner, 1, seed + repeat_i))
+            inner_cv = [(a, b) for _, _, a, b in inner_cv]
+        else:
+            inner_cv = (KFold(inner, shuffle=True, random_state=seed + repeat_i) if task == "regression"
+                        else StratifiedKFold(inner, shuffle=True, random_state=seed + repeat_i))
         for name, (pipe, grid) in build_models(task, seed).items():
             gs = GridSearchCV(pipe, grid, scoring=scoring, cv=inner_cv, n_jobs=-1)
             gs.fit(Xtr, ytr)
@@ -101,17 +137,29 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10):
                 m = {"bal_acc": balanced_accuracy_score(yte, pred), "auc": auc}
             m["repeat"], m["fold"] = repeat_i + 1, fold_i + 1
             results[name].append(m)
-            print(f"[repeat {repeat_i + 1} fold {fold_i + 1}] {name:8s} " +
-                  "  ".join(f"{k}={v:.3f}" for k, v in m.items() if k not in ("repeat", "fold")))
+            if verbose:
+                print(f"[repeat {repeat_i + 1} fold {fold_i + 1}] {name:8s} " +
+                      "  ".join(f"{k}={v:.3f}" for k, v in m.items() if k not in ("repeat", "fold")))
 
-    print(f"\nSummary (mean +/- std over {outer} x {repeats} = {outer * repeats} outer splits)")
-    for name, folds in results.items():
-        keys = [k for k in folds[0] if k not in ("repeat", "fold")]
-        summ = "  ".join(
-            f"{k}={np.nanmean([f[k] for f in folds]):.3f}+/-{np.nanstd([f[k] for f in folds]):.3f}"
-            for k in keys)
-        print(f"{name:8s} {summ}")
+    if verbose:
+        print(f"\nSummary (mean +/- std over {outer} x {repeats} = {outer * repeats} outer splits)")
+        for name, folds in results.items():
+            keys = [k for k in folds[0] if k not in ("repeat", "fold")]
+            summ = "  ".join(
+                f"{k}={np.nanmean([f[k] for f in folds]):.3f}+/-{np.nanstd([f[k] for f in folds]):.3f}"
+                for k in keys)
+            print(f"{name:8s} {summ}")
     return results
+
+
+def results_to_frame(results: dict, **tags) -> pd.DataFrame:
+    """Flattens nested_cv's {model: [fold_dict, ...]} into one row per (model, repeat, fold),
+    with extra columns (e.g. dataset=..., task=...) attached - the shape a CSV/DataFrame needs."""
+    rows = []
+    for model_name, folds in results.items():
+        for fold in folds:
+            rows.append({**tags, "model": model_name, **fold})
+    return pd.DataFrame(rows)
 
 
 def main():
@@ -122,13 +170,19 @@ def main():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--repeats", type=int, default=10,
                     help="how many times to repeat the outer CV split (default 10, slower but stabler)")
+    p.add_argument("--groups", default=None,
+                    help="column name (e.g. subject id) for group-aware CV: no group ever "
+                         "appears in both train and test, in either the outer or inner loop")
     args = p.parse_args()
 
     df = pd.read_csv(args.features)
     y = df[args.target]
-    X = df.drop(columns=[args.target]).select_dtypes(include=[np.number])
-    print(f"Loaded {X.shape[0]} samples, {X.shape[1]} features. Task: {args.task}")
-    nested_cv(X, y, task=args.task, seed=args.seed, repeats=args.repeats)
+    groups = df[args.groups] if args.groups else None
+    drop_cols = [args.target] + ([args.groups] if args.groups else [])
+    X = df.drop(columns=drop_cols).select_dtypes(include=[np.number])
+    group_msg = f", grouped by '{args.groups}' ({groups.nunique()} groups)" if groups is not None else ""
+    print(f"Loaded {X.shape[0]} samples, {X.shape[1]} features. Task: {args.task}{group_msg}")
+    nested_cv(X, y, task=args.task, seed=args.seed, repeats=args.repeats, groups=groups)
 
 
 if __name__ == "__main__":
