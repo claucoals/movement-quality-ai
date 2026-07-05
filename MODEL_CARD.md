@@ -88,6 +88,16 @@ std, and a 95% bootstrap CI over outer folds) and plots, including:
   comparison - a real, honestly-reported gap between "this feature correlates with the label" and
   "this feature set is the best classifier input" at REHAB24's small per-exercise sample sizes.
 - Self-recorded Pilates data collection not started.
+- Multiple comparisons: the sweep tests every feature family against every model type, per
+  exercise - dozens of (dataset, model) combinations, each itself the product of a hyperparameter
+  search. "Family X wins on N/6 exercises" summarizes the winner of that search, not a
+  single pre-registered comparison, so it should be read as exploratory - a place to look
+  closer (e.g. with SHAP, or a held-out replication), not as a confirmed result on its own.
+  The one result treated as closer to confirmatory is `knee_valgus_min` on Ex6: it was
+  specified before looking (a named, clinically-motivated feature, not the top result of a
+  search), and it has now survived three independent rounds of bug fixes (subject-identity
+  leakage, mocap QC, exercise-side selection) plus a change in feature dimensionality
+  (percentile-based feature selection) without disappearing.
 
 ## Ethics
 - Public datasets used under their data-use terms. Self-recorded clips only with consent.
