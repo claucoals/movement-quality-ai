@@ -17,7 +17,10 @@ Public rehab datasets (KIMORE, UI-PRMD) provide skeletons + expert quality score
 correct-vs-incorrect labels. From the joint trajectories we engineer interpretable
 kinematic features (joint angles over time, range of motion, symmetry, tempo) and train
 models in **nested cross-validation** to predict the quality score (regression) or
-classify execution (good/bad). Benchmarkable, reproducible, portfolio-solid.
+classify execution (good/bad). Benchmarkable, reproducible, portfolio-solid. "Interpretable"
+isn't just asserted: `notebooks/08_shap_anatomical.ipynb` runs out-of-fold SHAP attribution on
+REHAB24 and confirms the models lean on clinically-named angles (e.g. `knee_valgus_min` tops
+the ranking for squats) rather than opaque components.
 
 **Layer 2 — The signature: Pilates form feedback.**
 Self-recorded Pilates exercises → pose estimation (MediaPipe / MMPose) → the same feature
