@@ -6,6 +6,12 @@ This is the only place that decides *what* gets run (via config.yaml) and *where
 go (results/experiments.csv). Notebooks only read that CSV - they never hold hand-typed
 numbers, so a rerun with a changed config always stays consistent with what notebooks show.
 
+Progress is printed with flush=True and a timestamp after every dataset (not buffered until
+the whole run ends, which used to make background runs look silent for hours), and results
+are written to disk after each dataset too, not only once at the very end - a sweep killed
+partway through (which has happened more than once this session, chasing down a bug found
+mid-run) now only loses the one dataset in flight, not every dataset already computed.
+
 Usage:
     python src/run_experiments.py
     python src/run_experiments.py --config config.yaml
@@ -13,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 import argparse
+import time
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -36,7 +43,8 @@ def run_dataset(entry: dict, cv_cfg: dict, seed: int) -> pd.DataFrame:
 
     print(f"[{entry['name']}] {X.shape[0]} samples, {X.shape[1]} features, task={entry['task']}, "
           f"outer={outer}, repeats={repeats}"
-          + (f", groups={groups_col} ({groups.nunique()})" if groups is not None else ", no groups"))
+          + (f", groups={groups_col} ({groups.nunique()})" if groups is not None else ", no groups"),
+          flush=True)
 
     results = nested_cv(
         X, y, task=entry["task"], seed=seed,
@@ -48,6 +56,21 @@ def run_dataset(entry: dict, cv_cfg: dict, seed: int) -> pd.DataFrame:
         n_samples=X.shape[0], n_features=X.shape[1],
         grouped=groups is not None, status=entry.get("status", "active"),
     )
+
+
+def save_results(new_results: pd.DataFrame, out_path: Path) -> pd.DataFrame:
+    """Merge new_results into out_path, replacing any existing rows for the same dataset
+    names, and write immediately - called after every dataset, not just once at the end."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.exists():
+        existing = pd.read_csv(out_path)
+        ran_names = new_results["dataset"].unique()
+        existing = existing[~existing["dataset"].isin(ran_names)]
+        combined = pd.concat([existing, new_results], ignore_index=True)
+    else:
+        combined = new_results
+    combined.to_csv(out_path, index=False)
+    return combined
 
 
 def main():
@@ -78,27 +101,28 @@ def main():
         if missing:
             raise SystemExit(f"Unknown dataset name(s) in --only: {missing}")
 
-    all_frames = []
-    for entry in datasets:
-        frame = run_dataset(entry, cv_cfg, cfg["seed"])
-        all_frames.append(frame)
-        n_combos = frame.shape[0]
-        print(f"  -> {n_combos} righe (modelli x repeat x fold)")
-
-    new_results = pd.concat(all_frames, ignore_index=True)
     out_path = ROOT / (args.output or cfg["output"])
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    n_total = len(datasets)
+    t_start = time.monotonic()
+    all_new_rows = 0
 
-    if out_path.exists():
-        existing = pd.read_csv(out_path)
-        ran_names = new_results["dataset"].unique()
-        existing = existing[~existing["dataset"].isin(ran_names)]
-        combined = pd.concat([existing, new_results], ignore_index=True)
-    else:
-        combined = new_results
+    for i, entry in enumerate(datasets, 1):
+        t_dataset_start = time.monotonic()
+        frame = run_dataset(entry, cv_cfg, cfg["seed"])
+        combined = save_results(frame, out_path)
+        all_new_rows += frame.shape[0]
 
-    combined.to_csv(out_path, index=False)
-    print(f"\n{new_results.shape[0]} righe nuove/aggiornate, {combined.shape[0]} righe totali -> {out_path}")
+        elapsed = time.monotonic() - t_start
+        per_dataset = elapsed / i
+        eta = per_dataset * (n_total - i)
+        print(f"  -> {frame.shape[0]} righe (modelli x repeat x fold) in "
+              f"{time.monotonic() - t_dataset_start:.0f}s. "
+              f"[{i}/{n_total}] fatti, {elapsed / 60:.1f} min trascorsi, "
+              f"~{eta / 60:.1f} min stimati alla fine -> {out_path}",
+              flush=True)
+
+    print(f"\n{all_new_rows} righe nuove/aggiornate totali, "
+          f"{time.monotonic() - t_start:.0f}s totali -> {out_path}", flush=True)
 
 
 if __name__ == "__main__":
