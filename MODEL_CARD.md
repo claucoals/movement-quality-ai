@@ -54,13 +54,20 @@ std, and a 95% bootstrap CI over outer folds) and plots, including:
   rule-based form)
 
 ## Interpretability
-- SHAP: not run yet - next concrete step now that REHAB24's signal is confirmed across all 6
-  exercises and all 3 feature families (Fase 4 in the playbook is downstream of a working model,
-  which KIMORE never produced). Priority target: the anatomical family's winning models, since
-  its features are the only ones with clinical names to attach SHAP values to.
-- Per-phase deviation from reference: `build_features_rehab24_phases.py` is a first, rule-based
-  step in this direction (see "Le fasi del movimento aiutano?" in notebook 07), though it doesn't
-  yet improve on the base family's accuracy.
+- SHAP: `src/run_shap.py` computes out-of-fold permutation SHAP (same grouped-CV anti-leakage
+  split as the main sweep - every sample explained only by a model that never trained on it) for
+  each exercise's winning anatomical model, read from `results/experiments.csv` rather than
+  hardcoded. See `notebooks/08_shap_anatomical.ipynb` for the full per-exercise ranking and
+  beeswarm plots. Headline finding: on Ex6 (squat), `knee_valgus_min` - a feature built
+  specifically to capture knee cave-in, a known clinical squat-quality marker - is the single
+  most important feature by SHAP, without ever being told that's what to look for. Across
+  exercises, though, the top features are mostly exercise-specific (no feature appears in more
+  than 2/6 exercises' top-5) - honestly, not yet a shared movement-quality vocabulary.
+- Per-phase deviation from reference: `build_features_rehab24_phases.py` (early/mid/late thirds)
+  was the first attempt at this and didn't improve accuracy (see notebook 07) - the phase
+  boundaries themselves were the likely problem (naive time-thirds, not biomechanical events),
+  which is what phase segmentation from movement kinematics (e.g. pelvis vertical velocity for
+  squat-like exercises) is meant to fix next.
 
 ## Intended use & limitations
 - Research / portfolio only. Not medical advice, not a substitute for a physiotherapist or a
