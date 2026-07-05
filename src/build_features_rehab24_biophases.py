@@ -27,19 +27,14 @@ Usage:
 """
 
 from __future__ import annotations
-import argparse
-import re
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
 from build_features_rehab24_anatomical import ANGLE_DEFS, angle_series, knee_valgus_proxy
-from rehab24_annotations import is_mocap_erroneous, side_for, subject_id_for
+from rehab24_annotations import side_for
+from rehab24_common import iter_reps, parse_exercise_arg
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "raw" / "rehab24"
-
-FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
+from paths import rehab24_features
 
 # Joint type used for phase-turnaround detection, per exercise; combined with side_for()'s
 # left/right call (from the rep's own variant) to pick the actual ANGLE_DEFS key.
@@ -116,34 +111,16 @@ def subject_features(arr: np.ndarray, exercise: str, variant: str) -> dict:
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--exercise", required=True, help="e.g. Ex1")
-    args = p.parse_args()
-
-    ex_dir = BASE_DIR / f"{args.exercise}-segmented"
-    out_path = ROOT / "data" / f"features_rehab24_{args.exercise.lower()}_biophases.csv"
+    exercise = parse_exercise_arg()
+    out_path = rehab24_features(exercise, "biophases")
 
     rows = []
-    n_skipped, n_mocap_erroneous = 0, 0
-    for f in sorted(ex_dir.iterdir()):
-        if f.suffix != ".npy":
-            continue
-        m = FILENAME_RE.match(f.name)
-        if not m:
-            n_skipped += 1
-            continue
-        if is_mocap_erroneous(f.name):
-            n_mocap_erroneous += 1
-            continue
-        _, cam, variant, rep, label = m.groups()
-        arr = np.load(f)
-        feats = subject_features(arr, args.exercise, variant)
-        feats["subject"] = subject_id_for(f.name)
-        feats["correct"] = int(label)
+    for rep in iter_reps(exercise):
+        feats = subject_features(rep.arr, exercise, rep.variant)
+        feats["subject"] = rep.subject
+        feats["correct"] = rep.correct
         rows.append(feats)
 
-    print(f"{len(rows)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
-          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
     out = pd.DataFrame(rows)
     out.to_csv(out_path, index=False)
     print(f"{out.shape[0]} ripetizioni, {out['subject'].nunique()} soggetti, "

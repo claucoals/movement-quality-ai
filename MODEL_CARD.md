@@ -2,7 +2,7 @@
 
 ## How to read this card
 Every number here is reproducible: `python src/run_experiments.py` regenerates
-`results/experiments.csv` from `config.yaml`, and `notebooks/07_experiments_analysis.ipynb`
+`results/experiments/experiments.csv` from `config.yaml`, and `notebooks/07_experiments_analysis.ipynb`
 turns that CSV into the tables/plots this card summarizes. Nothing below is hand-typed from a
 one-off run - if a number here looks wrong, the fix is to rerun the pipeline, not edit this file.
 
@@ -20,6 +20,11 @@ one-off run - if a number here looks wrong, the fix is to rerun the pipeline, no
   logreg / random forest / MLP), see `src/quality_model.py`
 - Anti-leakage: `--groups <col>` makes both the outer and inner CV loop group-aware
   (Group/StratifiedGroupKFold) - required whenever a subject contributes more than one row
+- Small-group caveat: REHAB24-6 has only 8-9 subjects per exercise. With `outer_splits=5`,
+  several outer folds necessarily hold out a single subject, so any one fold's AUC is noisy by
+  construction (one person's performance decides that fold). `repeats=20` plus the bootstrap CI
+  in notebook 07 is the mitigation - the pooled mean/CI is more trustworthy than any individual
+  fold - but this is a real ceiling on how much the per-fold numbers alone should be trusted.
 
 ## Data
 - KIMORE: Kinect v2 skeleton (25 joints, position+orientation/frame), `src/build_features_ex5.py`
@@ -56,7 +61,7 @@ std, and a 95% bootstrap CI over outer folds) and plots, including:
 ## Interpretability
 - SHAP: `src/run_shap.py` computes out-of-fold permutation SHAP (same grouped-CV anti-leakage
   split as the main sweep - every sample explained only by a model that never trained on it) for
-  each exercise's winning anatomical model, read from `results/experiments.csv` rather than
+  each exercise's winning anatomical model, read from `results/experiments/experiments.csv` rather than
   hardcoded. See `notebooks/08_shap_anatomical.ipynb` for the full per-exercise ranking and
   beeswarm plots. Headline finding: on Ex6 (squat), `knee_valgus_min` - a feature built
   specifically to capture knee cave-in, a known clinical squat-quality marker - is the single

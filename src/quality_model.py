@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.feature_selection import SelectPercentile, f_classif, f_regression
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.neural_network import MLPClassifier, MLPRegressor
@@ -31,6 +32,20 @@ from sklearn.metrics import (balanced_accuracy_score, roc_auc_score,
 from scipy.stats import spearmanr
 
 
+# Searched (not fixed) inside the inner CV, same as every other hyperparameter below.
+# Percentile rather than a raw feature count: dataset feature counts here range from 20
+# (base) to 216 (biophases), and a fixed k would be either too small to matter for base or
+# too large to do anything for biophases. Percentile keeps the same grid meaningful across
+# every family - it is measured against whatever X.shape[1] actually is for that dataset.
+FS_PERCENTILE_GRID = [25, 50, 75, 100]
+
+# MLP's default (early_stopping=False) trains for the full max_iter regardless of whether it's
+# still improving - with 4x more (fs__percentile x hyperparameter) combinations to search now,
+# combinations that don't converge quickly no longer just cost a bit of extra time each, they
+# multiply into hours. early_stopping holds out part of the training fold to detect a plateau
+# and stop early, which is also a legitimate regularizer, not just a speed hack.
+
+
 def build_models(task: str, seed: int):
     if task == "regression":
         return {
@@ -38,18 +53,24 @@ def build_models(task: str, seed: int):
                                 ("m", DummyRegressor(strategy="mean"))]), {}),
             "ridge": (Pipeline([("imp", SimpleImputer(strategy="median")),
                                 ("sc", StandardScaler()),
+                                ("fs", SelectPercentile(f_regression)),
                                 ("m", Ridge(random_state=seed))]),
-                      {"m__alpha": [0.01, 0.1, 1, 10, 100, 300]}),
+                      {"fs__percentile": FS_PERCENTILE_GRID,
+                       "m__alpha": [0.01, 0.1, 1, 10, 100, 300]}),
             "rf": (Pipeline([("imp", SimpleImputer(strategy="median")),
                              ("sc", StandardScaler()),
+                             ("fs", SelectPercentile(f_regression)),
                              ("m", RandomForestRegressor(random_state=seed))]),
-                   {"m__n_estimators": [300, 600, 900],
+                   {"fs__percentile": FS_PERCENTILE_GRID,
+                    "m__n_estimators": [300, 600, 900],
                     "m__max_depth": [None, 3, 5, 10],
                     "m__min_samples_leaf": [1, 2, 4]}),
             "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
                               ("sc", StandardScaler()),
-                              ("m", MLPRegressor(max_iter=3000, random_state=seed))]),
-                    {"m__hidden_layer_sizes": [(16,), (32,), (32, 16), (64, 32)],
+                              ("fs", SelectPercentile(f_regression)),
+                              ("m", MLPRegressor(max_iter=3000, early_stopping=True, random_state=seed))]),
+                    {"fs__percentile": FS_PERCENTILE_GRID,
+                     "m__hidden_layer_sizes": [(16,), (32,), (32, 16), (64, 32)],
                      "m__alpha": [0.001, 0.01, 0.1, 1.0]}),
         }
     return {
@@ -57,16 +78,23 @@ def build_models(task: str, seed: int):
                             ("m", DummyClassifier(strategy="stratified", random_state=seed))]), {}),
         "logreg": (Pipeline([("imp", SimpleImputer(strategy="median")),
                              ("sc", StandardScaler()),
+                             ("fs", SelectPercentile(f_classif)),
                              ("m", LogisticRegression(max_iter=2000, random_state=seed))]),
-                   {"m__C": [0.01, 0.1, 1, 10]}),
+                   {"fs__percentile": FS_PERCENTILE_GRID,
+                    "m__C": [0.01, 0.1, 1, 10]}),
         "rf": (Pipeline([("imp", SimpleImputer(strategy="median")),
                          ("sc", StandardScaler()),
+                         ("fs", SelectPercentile(f_classif)),
                          ("m", RandomForestClassifier(random_state=seed))]),
-               {"m__n_estimators": [300, 600, 900], "m__max_depth": [None, 5, 10]}),
+               {"fs__percentile": FS_PERCENTILE_GRID,
+                "m__n_estimators": [300, 600, 900], "m__max_depth": [None, 5, 10],
+                "m__min_samples_leaf": [1, 2, 4]}),
         "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
                           ("sc", StandardScaler()),
-                          ("m", MLPClassifier(max_iter=3000, random_state=seed))]),
-                {"m__hidden_layer_sizes": [(16,), (32,), (32, 16), (64, 32)],
+                          ("fs", SelectPercentile(f_classif)),
+                          ("m", MLPClassifier(max_iter=3000, early_stopping=True, random_state=seed))]),
+                {"fs__percentile": FS_PERCENTILE_GRID,
+                 "m__hidden_layer_sizes": [(16,), (32,), (32, 16), (64, 32)],
                  "m__alpha": [0.001, 0.01, 0.1, 1.0]}),
     }
 
@@ -127,12 +155,15 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10, gr
             gs.fit(Xtr, ytr)
             pred = gs.predict(Xte)
             if task == "regression":
+                spearman_rho, _ = spearmanr(yte, pred)
                 m = {"mae": mean_absolute_error(yte, pred), "r2": r2_score(yte, pred),
-                     "spearman": spearmanr(yte, pred).correlation}
+                     "spearman": spearman_rho}
             else:
                 try:
                     auc = roc_auc_score(yte, gs.predict_proba(Xte)[:, 1])
-                except Exception:
+                except ValueError:
+                    # only a single class in yte (possible with tiny/imbalanced group-held-out
+                    # folds) makes AUC undefined - anything else should surface, not hide as NaN
                     auc = np.nan
                 m = {"bal_acc": balanced_accuracy_score(yte, pred), "auc": auc}
             m["repeat"], m["fold"] = repeat_i + 1, fold_i + 1

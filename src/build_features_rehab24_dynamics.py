@@ -16,69 +16,36 @@ Usage:
 """
 
 from __future__ import annotations
-import argparse
-import re
-from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-from rehab24_annotations import is_mocap_erroneous, subject_id_for
+from rehab24_common import iter_reps, parse_exercise_arg, resample_fixed
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "raw" / "rehab24"
+from paths import rehab24_features
 
-FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
 RESAMPLE_LEN = 100
 N_PCA_COMPONENTS = 15  # per signal (position/velocity/acceleration), so 45 features total
 
 
-def resample_fixed(signal: np.ndarray, n: int = RESAMPLE_LEN) -> np.ndarray:
-    t_old = np.linspace(0.0, 1.0, len(signal))
-    t_new = np.linspace(0.0, 1.0, n)
-    out = np.empty((n, signal.shape[1]))
-    for j in range(signal.shape[1]):
-        out[:, j] = np.interp(t_new, t_old, signal[:, j])
-    return out
-
-
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--exercise", required=True, help="e.g. Ex1")
-    args = p.parse_args()
-
-    ex_dir = BASE_DIR / f"{args.exercise}-segmented"
-    out_path = ROOT / "data" / f"features_rehab24_{args.exercise.lower()}_dynamics.csv"
+    exercise = parse_exercise_arg()
+    out_path = rehab24_features(exercise, "dynamics")
 
     rows_meta = []
     traj_pos, traj_vel, traj_acc = [], [], []
-    n_skipped, n_mocap_erroneous = 0, 0
 
-    for f in sorted(ex_dir.iterdir()):
-        if f.suffix != ".npy":
-            continue
-        m = FILENAME_RE.match(f.name)
-        if not m:
-            n_skipped += 1
-            continue
-        if is_mocap_erroneous(f.name):
-            n_mocap_erroneous += 1
-            continue
-        _, cam, variant, rep, label = m.groups()
-        arr = np.load(f)  # (frames, 26, 2)
-        pos = arr.reshape(arr.shape[0], -1)          # (frames, 52)
-        vel = np.diff(pos, axis=0)                    # (frames-1, 52)
-        acc = np.diff(vel, axis=0)                    # (frames-2, 52)
+    for rep in iter_reps(exercise):
+        pos = rep.arr.reshape(rep.arr.shape[0], -1)   # (frames, 52)
+        vel = np.diff(pos, axis=0)                     # (frames-1, 52)
+        acc = np.diff(vel, axis=0)                      # (frames-2, 52)
 
-        traj_pos.append(resample_fixed(pos).ravel())
-        traj_vel.append(resample_fixed(vel).ravel())
-        traj_acc.append(resample_fixed(acc).ravel())
-        rows_meta.append({"subject": subject_id_for(f.name), "variant": variant,
-                           "rep": int(rep), "correct": int(label)})
-
-    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
-          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
+        traj_pos.append(resample_fixed(pos, RESAMPLE_LEN).ravel())
+        traj_vel.append(resample_fixed(vel, RESAMPLE_LEN).ravel())
+        traj_acc.append(resample_fixed(acc, RESAMPLE_LEN).ravel())
+        rows_meta.append({"subject": rep.subject, "variant": rep.variant,
+                           "rep": rep.rep, "correct": rep.correct})
 
     meta = pd.DataFrame(rows_meta)
     signal_frames = []
@@ -88,7 +55,7 @@ def main():
         n_components = min(N_PCA_COMPONENTS, scaled.shape[0] - 1)
         pca = PCA(n_components=n_components, random_state=42)
         pcs = pca.fit_transform(scaled)
-        cols = [f"{name}_pc{i + 1}" for i in range(n_components)]
+        cols = pd.Index(f"{name}_pc{i + 1}" for i in range(n_components))
         signal_frames.append(pd.DataFrame(pcs, columns=cols))
         print(f"  {name}: varianza cumulata {pca.explained_variance_ratio_.sum():.3f} con {n_components} componenti")
 

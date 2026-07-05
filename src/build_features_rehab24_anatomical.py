@@ -20,19 +20,12 @@ Usage:
 """
 
 from __future__ import annotations
-import argparse
-import re
-from pathlib import Path
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks
 
-from rehab24_annotations import is_mocap_erroneous, subject_id_for
+from rehab24_common import iter_reps, parse_exercise_arg
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "raw" / "rehab24"
-
-FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
+from paths import rehab24_features
 
 JOINT_IDX = {
     "hips": 0, "spine": 1, "spine1": 2, "neck": 3, "head": 4, "head_end": 5,
@@ -85,21 +78,10 @@ def knee_valgus_proxy(arr: np.ndarray) -> np.ndarray:
     return knee_dist / np.maximum(hip_dist, floor)
 
 
-def rep_tempo_features(signal: np.ndarray) -> dict:
-    n = len(signal)
-    troughs, _ = find_peaks(-signal, prominence=5, distance=max(n // 10, 3))
-    if len(troughs) < 2:
-        return {"n_reps": len(troughs), "rep_dur_mean": np.nan, "rep_dur_std": np.nan}
-    durations = np.diff(troughs) / n
-    return {"n_reps": len(troughs), "rep_dur_mean": durations.mean(), "rep_dur_std": durations.std()}
-
-
 def subject_features(arr: np.ndarray) -> dict:
     feats = {}
-    angle_signals = {}
     for name, (a, b, c) in ANGLE_DEFS.items():
         s = angle_series(arr, a, b, c)
-        angle_signals[name] = s
         v = np.diff(s)
         feats[f"{name}_min"] = s.min()
         feats[f"{name}_max"] = s.max()
@@ -117,41 +99,20 @@ def subject_features(arr: np.ndarray) -> dict:
     valgus = knee_valgus_proxy(arr)
     feats["knee_valgus_min"] = valgus.min()
     feats["knee_valgus_mean"] = valgus.mean()
-
-    knee_avg = (angle_signals["l_knee"] + angle_signals["r_knee"]) / 2
-    feats.update(rep_tempo_features(knee_avg))
     return feats
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--exercise", required=True, help="e.g. Ex1")
-    args = p.parse_args()
-
-    ex_dir = BASE_DIR / f"{args.exercise}-segmented"
-    out_path = ROOT / "data" / f"features_rehab24_{args.exercise.lower()}_anatomical.csv"
+    exercise = parse_exercise_arg()
+    out_path = rehab24_features(exercise, "anatomical")
 
     rows = []
-    n_skipped, n_mocap_erroneous = 0, 0
-    for f in sorted(ex_dir.iterdir()):
-        if f.suffix != ".npy":
-            continue
-        m = FILENAME_RE.match(f.name)
-        if not m:
-            n_skipped += 1
-            continue
-        if is_mocap_erroneous(f.name):
-            n_mocap_erroneous += 1
-            continue
-        _, cam, variant, rep, label = m.groups()
-        arr = np.load(f)
-        feats = subject_features(arr)
-        feats["subject"] = subject_id_for(f.name)
-        feats["correct"] = int(label)
+    for rep in iter_reps(exercise):
+        feats = subject_features(rep.arr)
+        feats["subject"] = rep.subject
+        feats["correct"] = rep.correct
         rows.append(feats)
 
-    print(f"{len(rows)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
-          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
     out = pd.DataFrame(rows)
     out.to_csv(out_path, index=False)
     print(f"{out.shape[0]} ripetizioni, {out['subject'].nunique()} soggetti, "

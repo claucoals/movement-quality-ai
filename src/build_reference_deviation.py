@@ -12,35 +12,31 @@ build_features_rehab24_biophases.py, reused here rather than redefined):
   1. slice that phase out of every rep's angle signal
   2. resample it to a fixed length (phases have different frame counts across reps, since the
      turnaround point falls at a different frame each time)
-  3. average the resampled phase-trajectories of *correct* reps only -> the reference
+  3. average the resampled phase-trajectories of *correct* reps from every OTHER subject ->
+     that subject's reference (leave-subject-out, same anti-leakage rule enforced everywhere
+     else in this project via quality_model.py's grouped CV - a rep's deviation must not be
+     measured against a reference partly built from its own subject's other reps, or any
+     downstream check of "does deviation predict correct" would be inflated by subjects simply
+     being closer to their own average than to other people's)
   4. every rep's deviation = mean absolute difference between its own resampled
-     phase-trajectory and that reference
+     phase-trajectory and its subject's leave-subject-out reference
 
-This is deliberately a descriptive/interpretability artifact, not a new classifier input: the
-reference is built from all correct reps, including - for a given query rep - reps from its
-own subject. That's the right choice for explaining a rep's deviation (more reps = a more
-reliable reference), but if "deviation from reference" ever becomes a model feature instead of
-an explanation, the reference would need to be rebuilt leave-subject-out first, the same
-anti-leakage rule enforced everywhere else in this project (quality_model.py's grouped CV).
+This remains usable both as a descriptive/interpretability artifact and, because the
+leave-subject-out reference makes it leakage-safe, as a candidate model feature.
 
 Usage:
     python src/build_reference_deviation.py --exercise Ex1
 """
 
 from __future__ import annotations
-import argparse
-import re
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
 from build_features_rehab24_anatomical import ANGLE_DEFS, angle_series, knee_valgus_proxy
 from build_features_rehab24_biophases import PHASES, find_phase_bounds, reference_angle_name
-from rehab24_annotations import is_mocap_erroneous, subject_id_for
+from rehab24_common import iter_reps, parse_exercise_arg
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "raw" / "rehab24"
-FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
+from paths import rehab24_features
 
 RESAMPLE_N = 20  # points per phase after resampling - a fixed length is what makes averaging
                  # and differencing trajectories across reps of different durations possible
@@ -52,26 +48,6 @@ def resample(signal: np.ndarray, n: int = RESAMPLE_N) -> np.ndarray:
     t_old = np.linspace(0.0, 1.0, len(signal))
     t_new = np.linspace(0.0, 1.0, n)
     return np.interp(t_new, t_old, signal)
-
-
-def load_reps(exercise: str) -> tuple[list[dict], int, int]:
-    ex_dir = BASE_DIR / f"{exercise}-segmented"
-    reps = []
-    n_skipped, n_mocap_erroneous = 0, 0
-    for f in sorted(ex_dir.iterdir()):
-        if f.suffix != ".npy":
-            continue
-        m = FILENAME_RE.match(f.name)
-        if not m:
-            n_skipped += 1
-            continue
-        if is_mocap_erroneous(f.name):
-            n_mocap_erroneous += 1
-            continue
-        _, cam, variant, rep, label = m.groups()
-        reps.append({"subject": subject_id_for(f.name), "variant": variant, "rep": int(rep),
-                     "correct": int(label), "arr": np.load(f)})
-    return reps, n_skipped, n_mocap_erroneous
 
 
 def phase_trajectories(arr: np.ndarray, exercise: str, variant: str) -> dict:
@@ -91,15 +67,21 @@ def phase_trajectories(arr: np.ndarray, exercise: str, variant: str) -> dict:
     return out
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--exercise", required=True, help="e.g. Ex1")
-    args = p.parse_args()
-    exercise = args.exercise
+def build_reference(correct_reps: list[dict], angle_names: list[str]) -> dict:
+    reference = {}
+    for phase in PHASES:
+        for angle_name in angle_names:
+            key = (phase, angle_name)
+            stacked = np.stack([r["traj"][key] for r in correct_reps])
+            reference[key] = stacked.mean(axis=0)
+    return reference
 
-    reps, n_skipped, n_mocap_erroneous = load_reps(exercise)
-    print(f"{len(reps)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
-          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
+
+def main():
+    exercise = parse_exercise_arg()
+
+    reps = [{"subject": rep.subject, "variant": rep.variant, "rep": rep.rep,
+             "correct": rep.correct, "arr": rep.arr} for rep in iter_reps(exercise)]
 
     for rep in reps:
         rep["traj"] = phase_trajectories(rep["arr"], exercise, rep["variant"])
@@ -109,15 +91,18 @@ def main():
           f"(su {len(reps)} totali)")
 
     angle_names = list(ANGLE_DEFS.keys()) + ["knee_valgus"]
-    reference = {}
-    for phase in PHASES:
-        for angle_name in angle_names:
-            key = (phase, angle_name)
-            stacked = np.stack([r["traj"][key] for r in correct_reps])
-            reference[key] = stacked.mean(axis=0)
+    subjects = sorted({r["subject"] for r in reps})
+    # one reference per held-out subject, built only from OTHER subjects' correct reps -
+    # otherwise a subject's own reps would help define the very reference it's compared
+    # against, understating its deviation relative to a genuinely unseen reference
+    reference_by_subject = {
+        held_out: build_reference([r for r in correct_reps if r["subject"] != held_out], angle_names)
+        for held_out in subjects
+    }
 
     rows = []
     for rep in reps:
+        reference = reference_by_subject[rep["subject"]]
         row = {"subject": rep["subject"], "correct": rep["correct"]}
         for phase in PHASES:
             for angle_name in angle_names:
@@ -126,7 +111,7 @@ def main():
         rows.append(row)
 
     out = pd.DataFrame(rows)
-    out_path = ROOT / "data" / f"features_rehab24_{exercise.lower()}_deviation.csv"
+    out_path = rehab24_features(exercise, "deviation")
     out.to_csv(out_path, index=False)
     print(f"{out.shape[0]} ripetizioni, {out['subject'].nunique()} soggetti, "
           f"{out.shape[1] - 2} feature di deviazione ({len(PHASES)} fasi x {len(angle_names)} "

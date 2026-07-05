@@ -21,63 +21,30 @@ Usage:
 """
 
 from __future__ import annotations
-import argparse
-import re
-from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-from rehab24_annotations import is_mocap_erroneous, subject_id_for
+from rehab24_common import iter_reps, parse_exercise_arg, resample_fixed
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "raw" / "rehab24"
+from paths import rehab24_features
 
-FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
 RESAMPLE_LEN = 100
 N_PCA_COMPONENTS = 20
 
 
-def resample_fixed(signal: np.ndarray, n: int = RESAMPLE_LEN) -> np.ndarray:
-    t_old = np.linspace(0.0, 1.0, len(signal))
-    t_new = np.linspace(0.0, 1.0, n)
-    out = np.empty((n, signal.shape[1]))
-    for j in range(signal.shape[1]):
-        out[:, j] = np.interp(t_new, t_old, signal[:, j])
-    return out
-
-
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--exercise", required=True, help="e.g. Ex1")
-    args = p.parse_args()
-
-    ex_dir = BASE_DIR / f"{args.exercise}-segmented"
-    out_path = ROOT / "data" / f"features_rehab24_{args.exercise.lower()}.csv"
+    exercise = parse_exercise_arg()
+    out_path = rehab24_features(exercise, "base")
 
     rows_meta = []
     traj_vecs = []
-    n_skipped, n_mocap_erroneous = 0, 0
-    for f in sorted(ex_dir.iterdir()):
-        if f.suffix != ".npy":
-            continue
-        m = FILENAME_RE.match(f.name)
-        if not m:
-            n_skipped += 1
-            continue
-        if is_mocap_erroneous(f.name):
-            n_mocap_erroneous += 1
-            continue
-        _, cam, variant, rep, label = m.groups()
-        arr = np.load(f)  # (frames, 26, 2)
-        flat = arr.reshape(arr.shape[0], -1)  # (frames, 52)
-        traj_vecs.append(resample_fixed(flat).ravel())
-        rows_meta.append({"subject": subject_id_for(f.name), "variant": variant,
-                           "rep": int(rep), "correct": int(label)})
-
-    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
-          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
+    for rep in iter_reps(exercise):
+        flat = rep.arr.reshape(rep.arr.shape[0], -1)  # (frames, 52)
+        traj_vecs.append(resample_fixed(flat, RESAMPLE_LEN).ravel())
+        rows_meta.append({"subject": rep.subject, "variant": rep.variant,
+                           "rep": rep.rep, "correct": rep.correct})
 
     meta = pd.DataFrame(rows_meta)
     traj_matrix = np.vstack(traj_vecs)
@@ -92,7 +59,7 @@ def main():
         print(f"  pc{i}: {v:.3f}")
     print(f"Varianza cumulata con {n_components} componenti: {pca.explained_variance_ratio_.sum():.3f}")
 
-    out = pd.DataFrame(pcs, columns=[f"traj_pc{i+1}" for i in range(n_components)])
+    out = pd.DataFrame(pcs, columns=pd.Index(f"traj_pc{i+1}" for i in range(n_components)))
     out["subject"] = meta["subject"].values
     out["correct"] = meta["correct"].values
     out.to_csv(out_path, index=False)
