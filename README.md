@@ -50,7 +50,7 @@ notebooks:
 config.yaml            -> declares every dataset to test (features file, target, task, groups)
 src/run_experiments.py -> reads config.yaml, runs nested CV (src/quality_model.py) on each
                            dataset, appends every fold's result to results/experiments.csv
-notebooks/05_experiments_analysis.ipynb -> reads results/experiments.csv only, plots and tables
+notebooks/07_experiments_analysis.ipynb -> reads results/experiments.csv only, plots and tables
 ```
 
 To add a dataset or change the CV settings, edit `config.yaml` and rerun
@@ -76,13 +76,18 @@ movement-quality-ai/
 │   ├── 02_feature_check_ex5.ipynb      # univariate feature-vs-cTS correlation (KIMORE)
 │   ├── 03_pairwise_relative_check.ipynb   # CoRe-style relative check, permutation test
 │   ├── 04_classification_check.ipynb   # good/bad classification, permutation test (KIMORE)
-│   └── 05_experiments_analysis.ipynb   # reads results/experiments.csv - all current results
+│   ├── 05_eda_ui_prmd.ipynb            # UI-PRMD exploration: class balance, signal-strength scan
+│   ├── 06_eda_rehab24.ipynb            # REHAB24-6 exploration: joint map, per-exercise stats, PCA
+│   └── 07_experiments_analysis.ipynb   # reads results/experiments.csv - all current results
 ├── src/
 │   ├── data_access.py                  # KIMORE / UI-PRMD access instructions
 │   ├── pose_to_features.py             # video -> joint angles -> features (MediaPipe)
 │   ├── build_features_ex5.py           # KIMORE ex5 kinematic features (ROM, velocity, tempo)
 │   ├── build_features_ui_prmd.py       # UI-PRMD trajectory-PCA features
-│   ├── build_features_rehab24.py       # REHAB24-6 trajectory-PCA features, per exercise
+│   ├── build_features_rehab24.py       # REHAB24-6 position-only trajectory-PCA features ("base")
+│   ├── build_features_rehab24_dynamics.py    # + velocity/acceleration trajectory-PCA ("dynamics")
+│   ├── build_features_rehab24_anatomical.py  # named joint-angle features ("anatomical")
+│   ├── build_features_rehab24_phases.py      # early/mid/late-third phase-segmented PCA
 │   ├── univariate_check.py             # per-feature Spearman vs target, no CV
 │   ├── quality_model.py                # nested CV (regression & classification), group-aware
 │   └── run_experiments.py              # main: runs config.yaml's dataset list, writes the CSV

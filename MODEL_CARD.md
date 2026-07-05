@@ -2,7 +2,7 @@
 
 ## How to read this card
 Every number here is reproducible: `python src/run_experiments.py` regenerates
-`results/experiments.csv` from `config.yaml`, and `notebooks/05_experiments_analysis.ipynb`
+`results/experiments.csv` from `config.yaml`, and `notebooks/07_experiments_analysis.ipynb`
 turns that CSV into the tables/plots this card summarizes. Nothing below is hand-typed from a
 one-off run - if a number here looks wrong, the fix is to rerun the pipeline, not edit this file.
 
@@ -25,31 +25,49 @@ one-off run - if a number here looks wrong, the fix is to rerun the pipeline, no
 - KIMORE: Kinect v2 skeleton (25 joints, position+orientation/frame), `src/build_features_ex5.py`
 - UI-PRMD: Vicon, already resampled to 117 frames x 240 dims (units/joint mapping not published
   for this specific file), `src/build_features_ui_prmd.py`
-- REHAB24-6: 2D pose keypoints (26 points), `src/build_features_rehab24.py`
-  (whole-rep trajectory PCA) and `src/build_features_rehab24_phases.py` (early/mid/late
-  thirds PCA'd separately, testing whether phase-locating the signal helps - see notebook 05)
+- REHAB24-6: 2D pose keypoints (26 points, mocap-derived, mapping confirmed via the dataset's
+  Zenodo record, `data/ui_prmd/joints_names.txt`), three feature families all built per exercise
+  and compared head-to-head: `src/build_features_rehab24.py` (whole-rep position-only trajectory
+  PCA, "base"), `src/build_features_rehab24_dynamics.py` (position+velocity+acceleration
+  trajectory PCA, "dynamics"), `src/build_features_rehab24_anatomical.py` (named joint angles -
+  knee, hip, elbow, shoulder, ankle, trunk flexion, knee-valgus proxy, rep tempo, "anatomical").
+  `src/build_features_rehab24_phases.py` (early/mid/late thirds PCA'd separately) tests phase
+  segmentation on top of the base family.
 
 ## Performance
-See `notebooks/05_experiments_analysis.ipynb` for the full table (every dataset x model, mean,
+See `notebooks/07_experiments_analysis.ipynb` for the full table (every dataset x model, mean,
 std, and a 95% bootstrap CI over outer folds) and plots, including:
 - the direct comparison of `rehab24_ex1` (correct, subject-grouped split) against
   `rehab24_ex1_ungrouped` (same data, split per row) - the concrete illustration of why the
-  anti-leakage rule matters, not just an assertion
-- AUC per REHAB24 exercise, to see how broadly the signal holds
-- whether phase-segmented features (`rehab24_ex1_phases`) change anything
+  anti-leakage rule matters, not just an assertion (ungrouped AUC 0.988 vs grouped 0.902, i.e.
+  the leakage inflates the estimate, it doesn't just add noise)
+- a base vs dynamics vs anatomical comparison across all 6 exercises: `dynamics` gives the best
+  discriminative AUC on 4/6 exercises, `anatomical` wins the remaining 2 (ex2, ex6) - despite
+  anatomical showing the broadest univariate signal of any family on every exercise in an earlier
+  check, that didn't fully translate into the best multivariate model at this sample size
+- `rehab24_pooled_leave_one_exercise_out`: anatomical features, trained on 5 exercises and tested
+  on a 6th never seen, as a small proxy for Pillar 3 (domain transfer). Signal is present but
+  modest (rf's 95% CI clears the dummy's, logreg/mlp's don't) - an early hint that "correct
+  execution" isn't fully exercise-specific, not proof of robust transfer to Pilates
+- whether phase-segmented features (`rehab24_ex1_phases`) change anything (no: 0.772 vs 0.902
+  for the base family on ex1, so phase segmentation costs signal here, at least in this simple
+  rule-based form)
 
 ## Interpretability
-- SHAP: not run yet - waiting until REHAB24's signal is confirmed stable across exercises
-  (Fase 4 in the playbook is downstream of a working model, which KIMORE never produced)
+- SHAP: not run yet - next concrete step now that REHAB24's signal is confirmed across all 6
+  exercises and all 3 feature families (Fase 4 in the playbook is downstream of a working model,
+  which KIMORE never produced). Priority target: the anatomical family's winning models, since
+  its features are the only ones with clinical names to attach SHAP values to.
 - Per-phase deviation from reference: `build_features_rehab24_phases.py` is a first, rule-based
-  step in this direction (see "Le fasi del movimento aiutano?" in notebook 05)
+  step in this direction (see "Le fasi del movimento aiutano?" in notebook 07), though it doesn't
+  yet improve on the base family's accuracy.
 
 ## Intended use & limitations
 - Research / portfolio only. Not medical advice, not a substitute for a physiotherapist or a
   qualified Pilates instructor.
-- REHAB24's 26 keypoints have no published anatomical mapping alongside this specific file, so
-  current REHAB24 features are generic trajectory shape (PCA), not named joint angles - a real
-  limitation for the project's own interpretability thesis, to close before Fase 4.
+- The anatomical family's strong univariate signal doesn't consistently win the multivariate
+  comparison - a real, honestly-reported gap between "this feature correlates with the label" and
+  "this feature set is the best classifier input" at REHAB24's small per-exercise sample sizes.
 - Self-recorded Pilates data (Layer 2) not started.
 
 ## Ethics
