@@ -9,10 +9,15 @@ UI-PRMD (University of Idaho Physical Rehabilitation Movement Data):
     https://webpages.uidaho.edu/ui-prmd/  -> data/raw/ui_prmd/
     Ten exercises, correct and incorrect repetitions, Kinect + Vicon skeletons.
 
+REHAB24-6:
+    Zenodo record 13305826. 6 exercises, 2D pose keypoints, subject id + correct/incorrect
+    per rep, plus per-rep QC metadata (annotations.csv - see rehab24_annotations.py for why
+    that file matters beyond being "extra" data). -> data/raw/rehab24/
+
 IntelliRehabDS (IRDS):
     Public via MDPI Data (2021). Correctness labels. -> data/raw/irds/
 
-Self-recorded Pilates (Layer 2):
+Self-recorded Pilates:
     Record a few exercises (e.g. Hundred, Roll-Up, Shoulder Bridge, Single-Leg Stretch),
     each performed correctly and with 1-2 common faults, several reps, a few people.
     Get simple written consent. Place clips under data/raw/pilates/ (git-ignored).
@@ -24,7 +29,7 @@ RAW = Path(__file__).resolve().parents[1] / "data" / "raw"
 
 
 def check_data():
-    for name in ("kimore", "ui_prmd", "irds", "pilates"):
+    for name in ("kimore", "ui_prmd", "rehab24", "irds", "pilates"):
         d = RAW / name
         print(f"{name:8s}: {d}  [{'found' if d.exists() else 'MISSING'}]")
 

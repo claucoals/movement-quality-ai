@@ -24,10 +24,12 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "ui_prmd" / "2d_joints_segmented" / "2d_joints_segmented"
+from rehab24_annotations import is_mocap_erroneous, subject_id_for
 
-FILENAME_RE = re.compile(r"^(PM_\d+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
+ROOT = Path(__file__).resolve().parents[1]
+BASE_DIR = ROOT / "data" / "raw" / "rehab24"
+
+FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
 RESAMPLE_LEN = 100
 N_PCA_COMPONENTS = 15  # per signal (position/velocity/acceleration), so 45 features total
 
@@ -51,7 +53,7 @@ def main():
 
     rows_meta = []
     traj_pos, traj_vel, traj_acc = [], [], []
-    n_skipped = 0
+    n_skipped, n_mocap_erroneous = 0, 0
 
     for f in sorted(ex_dir.iterdir()):
         if f.suffix != ".npy":
@@ -60,7 +62,10 @@ def main():
         if not m:
             n_skipped += 1
             continue
-        subject, cam, variant, rep, label = m.groups()
+        if is_mocap_erroneous(f.name):
+            n_mocap_erroneous += 1
+            continue
+        _, cam, variant, rep, label = m.groups()
         arr = np.load(f)  # (frames, 26, 2)
         pos = arr.reshape(arr.shape[0], -1)          # (frames, 52)
         vel = np.diff(pos, axis=0)                    # (frames-1, 52)
@@ -69,9 +74,11 @@ def main():
         traj_pos.append(resample_fixed(pos).ravel())
         traj_vel.append(resample_fixed(vel).ravel())
         traj_acc.append(resample_fixed(acc).ravel())
-        rows_meta.append({"subject": subject, "variant": variant, "rep": int(rep), "correct": int(label)})
+        rows_meta.append({"subject": subject_id_for(f.name), "variant": variant,
+                           "rep": int(rep), "correct": int(label)})
 
-    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme)")
+    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
+          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
 
     meta = pd.DataFrame(rows_meta)
     signal_frames = []

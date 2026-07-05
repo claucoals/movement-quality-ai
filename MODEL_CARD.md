@@ -45,10 +45,10 @@ std, and a 95% bootstrap CI over outer folds) and plots, including:
   discriminative AUC on 4/6 exercises, `anatomical` wins the remaining 2 (ex2, ex6) - despite
   anatomical showing the broadest univariate signal of any family on every exercise in an earlier
   check, that didn't fully translate into the best multivariate model at this sample size
-- `rehab24_pooled_leave_one_exercise_out`: anatomical features, trained on 5 exercises and tested
-  on a 6th never seen, as a small proxy for Pillar 3 (domain transfer). Signal is present but
-  modest (rf's 95% CI clears the dummy's, logreg/mlp's don't) - an early hint that "correct
-  execution" isn't fully exercise-specific, not proof of robust transfer to Pilates
+- `rehab24_pooled_leave_one_exercise_out`: anatomical features, trained on 5 exercises and
+  tested on a 6th never seen, as a small proxy for cross-exercise transfer. Signal is present
+  but modest (rf's 95% CI clears the dummy's, logreg/mlp's don't) - an early hint that "correct
+  execution" isn't fully exercise-specific, not proof of robust transfer to a new domain
 - whether phase-segmented features (`rehab24_ex1_phases`) change anything (no: 0.772 vs 0.902
   for the base family on ex1, so phase segmentation costs signal here, at least in this simple
   rule-based form)
@@ -77,12 +77,12 @@ std, and a 95% bootstrap CI over outer folds) and plots, including:
   squat-like exercises) is meant to fix next.
 
 ## Intended use & limitations
-- Research / portfolio only. Not medical advice, not a substitute for a physiotherapist or a
+- Research use only. Not medical advice, not a substitute for a physiotherapist or a
   qualified Pilates instructor.
 - The anatomical family's strong univariate signal doesn't consistently win the multivariate
   comparison - a real, honestly-reported gap between "this feature correlates with the label" and
   "this feature set is the best classifier input" at REHAB24's small per-exercise sample sizes.
-- Self-recorded Pilates data (Layer 2) not started.
+- Self-recorded Pilates data collection not started.
 
 ## Ethics
 - Public datasets used under their data-use terms. Self-recorded clips only with consent.

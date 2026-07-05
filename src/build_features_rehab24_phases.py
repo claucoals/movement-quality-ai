@@ -23,10 +23,12 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "ui_prmd" / "2d_joints_segmented" / "2d_joints_segmented"
+from rehab24_annotations import is_mocap_erroneous, subject_id_for
 
-FILENAME_RE = re.compile(r"^(PM_\d+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
+ROOT = Path(__file__).resolve().parents[1]
+BASE_DIR = ROOT / "data" / "raw" / "rehab24"
+
+FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
 RESAMPLE_LEN = 99  # divisible by 3, one point of overlap avoided at phase edges
 N_PHASES = 3
 N_PCA_PER_PHASE = 8
@@ -51,7 +53,7 @@ def main():
 
     rows_meta = []
     traj_by_phase = [[] for _ in range(N_PHASES)]
-    n_skipped = 0
+    n_skipped, n_mocap_erroneous = 0, 0
     phase_len = RESAMPLE_LEN // N_PHASES
 
     for f in sorted(ex_dir.iterdir()):
@@ -61,16 +63,21 @@ def main():
         if not m:
             n_skipped += 1
             continue
-        subject, cam, variant, rep, label = m.groups()
+        if is_mocap_erroneous(f.name):
+            n_mocap_erroneous += 1
+            continue
+        _, cam, variant, rep, label = m.groups()
         arr = np.load(f)
         flat = arr.reshape(arr.shape[0], -1)
         resampled = resample_fixed(flat)  # (RESAMPLE_LEN, 52)
         for phase_i in range(N_PHASES):
             chunk = resampled[phase_i * phase_len:(phase_i + 1) * phase_len]
             traj_by_phase[phase_i].append(chunk.ravel())
-        rows_meta.append({"subject": subject, "variant": variant, "rep": int(rep), "correct": int(label)})
+        rows_meta.append({"subject": subject_id_for(f.name), "variant": variant,
+                           "rep": int(rep), "correct": int(label)})
 
-    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme)")
+    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
+          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
 
     meta = pd.DataFrame(rows_meta)
     phase_frames = []

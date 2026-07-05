@@ -1,112 +1,74 @@
-# Movement-Quality AI — from clinical benchmarks to Pilates form feedback
+# Movement-Quality AI
 
-**Automatic assessment of movement quality from video, using pose estimation and machine
-learning — bridging clinical rehabilitation benchmarks and real Pilates practice.**
+Movement-quality assessment from pose keypoints: interpretable kinematic features (joint
+angles, range of motion, symmetry, tempo) feeding nested-cross-validated models, with SHAP
+attribution to check what the model actually relies on.
 
-A physiotherapist or a Pilates instructor judges a movement in seconds: is the pelvis level,
-is the spine over-extending, are the two sides symmetric? This project asks whether a model
-can learn that judgement from body kinematics — and, crucially, explain *why* it scored a
-movement the way it did, so the feedback is actionable.
+## Data
 
-The work follows the **Action Quality Assessment (AQA)** literature and is built in two layers.
-
-## Two-layer design
-
-**Layer 1 — Rigorous core on public data.**
-Public rehab datasets (KIMORE, UI-PRMD) provide skeletons + expert quality scores /
-correct-vs-incorrect labels. From the joint trajectories we engineer interpretable
-kinematic features (joint angles over time, range of motion, symmetry, tempo) and train
-models in **nested cross-validation** to predict the quality score (regression) or
-classify execution (good/bad). Benchmarkable, reproducible, portfolio-solid. "Interpretable"
-isn't just asserted: `notebooks/08_shap_anatomical.ipynb` runs out-of-fold SHAP attribution on
-REHAB24 and confirms the models lean on clinically-named angles (e.g. `knee_valgus_min` tops
-the ranking for squats) rather than opaque components.
-
-**Layer 2 — The signature: Pilates form feedback.**
-Self-recorded Pilates exercises → pose estimation (MediaPipe / MMPose) → the same feature
-pipeline → automatic, interpretable feedback on execution. This is where the project stops
-being generic and becomes personal.
-
-## Research questions
-
-1. Can interpretable kinematic features predict expert movement-quality scores on KIMORE?
-2. Does a transparent feature-based model match heavier skeleton deep-learning baselines?
-3. Does the approach transfer from clinical rehab movements to Pilates exercises?
-
-## Data (public, free)
-
-| Dataset | Content | Use |
+| Dataset | Content | Task |
 |---|---|---|
-| **KIMORE** | 75 subjects, ex5 (squat), Kinect skeleton, general clinical score | Regression (closed, negative result - see MODEL_CARD) |
-| **UI-PRMD** | Deep squat, correct/incorrect reps, Vicon (no subject id in the released file) | Classification, indicative only (leakage risk, see MODEL_CARD) |
-| **REHAB24-6** | 6 exercises, 2D pose keypoints, subject id + correct/incorrect per rep | Classification, subject-grouped nested CV |
-| *Self-recorded Pilates* | Your own videos, a few exercises, correct + common faults | Layer 2 demo (not started) |
+| KIMORE | 75 subjects, ex5 (squat), Kinect skeleton, clinical score | Regression - see MODEL_CARD |
+| UI-PRMD | Deep squat, correct/incorrect reps, Vicon | Classification - see MODEL_CARD |
+| REHAB24-6 | 6 exercises, 2D pose keypoints, subject id + correct/incorrect per rep | Classification, subject-grouped nested CV |
 
-Raw data / videos are **not** committed (see `.gitignore` - the whole `data/` folder is ignored).
+Raw data is not committed (`.gitignore` excludes `data/` and `results/` entirely).
 
-## Experiment pipeline
-
-Everything runs through one config, one runner, one results file - no hand-typed numbers in
-notebooks:
+## Pipeline
 
 ```
-config.yaml            -> declares every dataset to test (features file, target, task, groups)
+config.yaml            -> declares every dataset to run (features file, target, task, groups)
 src/run_experiments.py -> reads config.yaml, runs nested CV (src/quality_model.py) on each
                            dataset, appends every fold's result to results/experiments.csv
-notebooks/07_experiments_analysis.ipynb -> reads results/experiments.csv only, plots and tables
+notebooks/07_experiments_analysis.ipynb -> reads results/experiments.csv, plots and tables
 ```
 
-To add a dataset or change the CV settings, edit `config.yaml` and rerun
-`python src/run_experiments.py` - the notebook picks up the new `results/experiments.csv`
-automatically on re-execution.
+```
+python src/run_experiments.py                 # run everything in config.yaml
+python src/run_experiments.py --only ex1,ex2   # re-run just these dataset entries
+```
+
+Every number in the notebooks is read from `results/experiments.csv` or computed live -
+nothing is hand-typed.
 
 ## Repository structure
 
 ```
 movement-quality-ai/
-├── README.md
-├── config.yaml                        # the experiment grid: one entry per dataset
+├── config.yaml                        # experiment grid: one entry per dataset
 ├── requirements.txt
-├── .gitignore
-├── docs/
-│   ├── ROADMAP.md
-│   └── tesi.md                        # two-sentence project thesis (Fase 0)
-├── data/                               # gitignored entirely: raw pkl/csv/npy + derived features
-├── results/
-│   └── experiments.csv                # gitignored (regenerated by run_experiments.py)
 ├── notebooks/
-│   ├── 01_eda_kimore.ipynb             # Fase 1: subjects, cTS distribution, sanity checks
-│   ├── 02_feature_check_ex5.ipynb      # univariate feature-vs-cTS correlation (KIMORE)
-│   ├── 03_pairwise_relative_check.ipynb   # CoRe-style relative check, permutation test
-│   ├── 04_classification_check.ipynb   # good/bad classification, permutation test (KIMORE)
-│   ├── 05_eda_ui_prmd.ipynb            # UI-PRMD exploration: class balance, signal-strength scan
-│   ├── 06_eda_rehab24.ipynb            # REHAB24-6 exploration: joint map, per-exercise stats, PCA
-│   └── 07_experiments_analysis.ipynb   # reads results/experiments.csv - all current results
+│   ├── 01_eda_kimore.ipynb
+│   ├── 02_feature_check_ex5.ipynb
+│   ├── 03_pairwise_relative_check.ipynb
+│   ├── 04_classification_check.ipynb
+│   ├── 05_eda_ui_prmd.ipynb
+│   ├── 06_eda_rehab24.ipynb
+│   ├── 07_experiments_analysis.ipynb
+│   └── 08_shap_anatomical.ipynb
 ├── src/
-│   ├── data_access.py                  # KIMORE / UI-PRMD access instructions
-│   ├── pose_to_features.py             # video -> joint angles -> features (MediaPipe)
-│   ├── build_features_ex5.py           # KIMORE ex5 kinematic features (ROM, velocity, tempo)
-│   ├── build_features_ui_prmd.py       # UI-PRMD trajectory-PCA features
-│   ├── build_features_rehab24.py       # REHAB24-6 position-only trajectory-PCA features ("base")
-│   ├── build_features_rehab24_dynamics.py    # + velocity/acceleration trajectory-PCA ("dynamics")
-│   ├── build_features_rehab24_anatomical.py  # named joint-angle features ("anatomical")
-│   ├── build_features_rehab24_phases.py      # early/mid/late-third phase-segmented PCA
-│   ├── univariate_check.py             # per-feature Spearman vs target, no CV
-│   ├── quality_model.py                # nested CV (regression & classification), group-aware
-│   └── run_experiments.py              # main: runs config.yaml's dataset list, writes the CSV
-└── MODEL_CARD.md                       # current honest performance status
+│   ├── data_access.py                        # KIMORE / UI-PRMD access instructions
+│   ├── pose_to_features.py                   # video -> joint angles -> features (MediaPipe)
+│   ├── build_features_ex5.py                 # KIMORE ex5 kinematic features
+│   ├── build_features_ui_prmd.py             # UI-PRMD trajectory-PCA features
+│   ├── build_features_rehab24.py             # REHAB24-6 position-only trajectory PCA
+│   ├── build_features_rehab24_dynamics.py    # + velocity/acceleration trajectory PCA
+│   ├── build_features_rehab24_anatomical.py  # named joint-angle features
+│   ├── build_features_rehab24_phases.py      # equal-thirds phase segmentation
+│   ├── build_features_rehab24_biophases.py   # turnaround-based phase segmentation
+│   ├── build_reference_deviation.py          # deviation from correct-rep reference trajectory
+│   ├── univariate_check.py                   # per-feature correlation vs target, no CV
+│   ├── quality_model.py                      # nested CV, group-aware
+│   ├── run_shap.py                           # out-of-fold SHAP attribution
+│   └── run_experiments.py                    # main: runs config.yaml, writes the CSV
+└── MODEL_CARD.md                             # dataset status, performance, limitations
 ```
 
-## Key references
+## References
 
 - Capecci et al. (2019) *The KIMORE Dataset*, IEEE TNSRE
-- Liao, Vakanski, Xian (2020) *A Deep Learning Framework for Assessing Physical Rehabilitation Exercises*, IEEE TNSRE  (UI-PRMD)
+- Liao, Vakanski, Xian (2020) *A Deep Learning Framework for Assessing Physical Rehabilitation Exercises*, IEEE TNSRE
 - Parmar & Morris (2019) *What and How Well You Performed: AQA*, CVPR
 - Fieraru et al. (2021) *AIFit: Automatic 3D Human-Interpretable Feedback for Fitness*, CVPR
 - Yan, Xiong, Lin (2018) *Spatial-Temporal GCN for skeleton action recognition*, AAAI
 - Uhlrich et al. (2023) *OpenCap*, PLOS Computational Biology
-
-## Author
-
-Claudia — BSc Artificial Intelligence. Portfolio project toward the M.Sc. Human Technology
-in Sports and Medicine (German Sport University Cologne).

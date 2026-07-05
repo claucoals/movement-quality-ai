@@ -1,15 +1,19 @@
 """
-Anatomical (named joint-angle) features for REHAB24-6 - the interpretable feature family
-the project's thesis actually calls for, replacing the opaque trajectory-PCA components in
-build_features_rehab24.py now that the joint mapping is confirmed (data/ui_prmd/joints_names.txt,
-downloaded from the dataset's Zenodo record - a mocap-standard 26-joint hierarchy, verified
-anatomically plausible: Head_end < Neck < Spine1 < Spine < Hips < knees < feet in image-y).
+Anatomical (named joint-angle) features for REHAB24-6, replacing the opaque trajectory-PCA
+components in build_features_rehab24.py now that the joint mapping is confirmed
+(data/raw/rehab24/joints_names.txt, downloaded from the dataset's Zenodo record - a
+mocap-standard 26-joint hierarchy, verified anatomically plausible: Head_end < Neck < Spine1 <
+Spine < Hips < knees < feet in image-y).
 
 Mirrors the angle logic in build_features_ex5.py (angle at a joint from its two neighbours),
 applied to every major joint so the same pipeline covers all 6 exercises (arm abduction, arm
 VW, push-ups, leg abduction, leg lunge, squats) without hand-picking a different feature set
-per exercise - which joints matter for which exercise is exactly what SHAP/feature-importance
-should reveal later (Fase 4), not something to decide upfront by looking at the exercise name.
+per exercise - which joints matter for which exercise is what SHAP/feature-importance reveals,
+not something to decide upfront by looking at the exercise name.
+
+Subject id comes from data/raw/rehab24/annotations.csv's person_id (see
+rehab24_annotations.py), not the filename's "PM_NNN" string - two different filename strings
+can be the same real person. Reps flagged `mocap_erroneous` there are excluded.
 
 Usage:
     python src/build_features_rehab24_anatomical.py --exercise Ex1
@@ -23,10 +27,12 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "ui_prmd" / "2d_joints_segmented" / "2d_joints_segmented"
+from rehab24_annotations import is_mocap_erroneous, subject_id_for
 
-FILENAME_RE = re.compile(r"^(PM_\d+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
+ROOT = Path(__file__).resolve().parents[1]
+BASE_DIR = ROOT / "data" / "raw" / "rehab24"
+
+FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
 
 JOINT_IDX = {
     "hips": 0, "spine": 1, "spine1": 2, "neck": 3, "head": 4, "head_end": 5,
@@ -62,10 +68,21 @@ def angle_series(arr: np.ndarray, a: str, b: str, c: str) -> np.ndarray:
 def knee_valgus_proxy(arr: np.ndarray) -> np.ndarray:
     """Ratio of inter-knee to inter-hip distance: well below 1 means the knees are caving
     in relative to the hips (valgus), a classic squat/lunge quality fault. Uses x (lateral
-    pixel) distance only, since the camera is roughly frontal for these exercises."""
+    pixel) distance only, since the camera is roughly frontal for these exercises.
+
+    hip_dist genuinely collapses toward zero in some frames - not a tracking error, just
+    ordinary 2D-projection foreshortening as the hips momentarily align along the camera's
+    viewing axis during the movement - which blows the ratio up to values in the thousands
+    (checked across REHAB24-6: ~10% of frames have hip_dist under a fifth of that trial's
+    median, and the resulting ratio reaches into the tens of thousands at the extreme). A
+    fixed epsilon does nothing against that, since the denominator itself is a real small
+    number, not literally zero. Flooring hip_dist at a fraction of *that trial's own* median
+    keeps the signal meaningful and adapts to each subject/camera's scale, instead of an
+    arbitrary global constant."""
     knee_dist = np.abs(arr[:, JOINT_IDX["l_leg"]][:, 0] - arr[:, JOINT_IDX["r_leg"]][:, 0])
     hip_dist = np.abs(arr[:, JOINT_IDX["l_upleg"]][:, 0] - arr[:, JOINT_IDX["r_upleg"]][:, 0])
-    return knee_dist / (hip_dist + 1e-6)
+    floor = 0.25 * np.median(hip_dist)
+    return knee_dist / np.maximum(hip_dist, floor)
 
 
 def rep_tempo_features(signal: np.ndarray) -> dict:
@@ -115,7 +132,7 @@ def main():
     out_path = ROOT / "data" / f"features_rehab24_{args.exercise.lower()}_anatomical.csv"
 
     rows = []
-    n_skipped = 0
+    n_skipped, n_mocap_erroneous = 0, 0
     for f in sorted(ex_dir.iterdir()):
         if f.suffix != ".npy":
             continue
@@ -123,14 +140,18 @@ def main():
         if not m:
             n_skipped += 1
             continue
-        subject, cam, variant, rep, label = m.groups()
+        if is_mocap_erroneous(f.name):
+            n_mocap_erroneous += 1
+            continue
+        _, cam, variant, rep, label = m.groups()
         arr = np.load(f)
         feats = subject_features(arr)
-        feats["subject"] = subject
+        feats["subject"] = subject_id_for(f.name)
         feats["correct"] = int(label)
         rows.append(feats)
 
-    print(f"{len(rows)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme)")
+    print(f"{len(rows)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
+          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
     out = pd.DataFrame(rows)
     out.to_csv(out_path, index=False)
     print(f"{out.shape[0]} ripetizioni, {out['subject'].nunique()} soggetti, "

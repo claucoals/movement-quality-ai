@@ -2,15 +2,14 @@
 Features for the REHAB24-6 dataset (2D pose keypoints, segmented per repetition).
 
 Each .npy file is one repetition: (n_frames, 26, 2) array of 2D joint pixel
-coordinates from pose estimation, already segmented. The filename encodes
-subject id, exercise variant, repetition number, and label (1 = correct,
-0 = incorrect): e.g. PM_001_c18_rightarm-1-rep6-0.npy -> subject PM_001,
-rep 6, label 0.
+coordinates from pose estimation, already segmented. The filename encodes an
+exercise variant, repetition number, and label (1 = correct, 0 = incorrect):
+e.g. PM_001_c18_rightarm-1-rep6-0.npy -> rep 6, label 0. Subject id is NOT
+taken from the filename's "PM_NNN" string - see rehab24_annotations.py for
+why (two different filename strings can be the same real person) - it comes
+from data/raw/rehab24/annotations.csv's person_id via subject_id_for().
 
-Unlike the UI-PRMD Data_Correct/Incorrect.csv, subject id is directly
-available here, so a proper subject-grouped CV (no subject in both train
-and test) is possible - the anti-leakage rule the playbook treats as
-non-negotiable.
+Reps flagged `mocap_erroneous` in that same file are excluded.
 
 Exact keypoint identities (which of the 26 points is which joint) are not
 given alongside this file, so - as with UI-PRMD - features are a generic
@@ -30,10 +29,12 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE_DIR = ROOT / "data" / "ui_prmd" / "2d_joints_segmented" / "2d_joints_segmented"
+from rehab24_annotations import is_mocap_erroneous, subject_id_for
 
-FILENAME_RE = re.compile(r"^(PM_\d+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
+ROOT = Path(__file__).resolve().parents[1]
+BASE_DIR = ROOT / "data" / "raw" / "rehab24"
+
+FILENAME_RE = re.compile(r"^(PM_\w+)_c(\d+)_(.+)-rep(\d+)-(\d+)\.npy$")
 RESAMPLE_LEN = 100
 N_PCA_COMPONENTS = 20
 
@@ -57,7 +58,7 @@ def main():
 
     rows_meta = []
     traj_vecs = []
-    n_skipped = 0
+    n_skipped, n_mocap_erroneous = 0, 0
     for f in sorted(ex_dir.iterdir()):
         if f.suffix != ".npy":
             continue
@@ -65,13 +66,18 @@ def main():
         if not m:
             n_skipped += 1
             continue
-        subject, cam, variant, rep, label = m.groups()
+        if is_mocap_erroneous(f.name):
+            n_mocap_erroneous += 1
+            continue
+        _, cam, variant, rep, label = m.groups()
         arr = np.load(f)  # (frames, 26, 2)
         flat = arr.reshape(arr.shape[0], -1)  # (frames, 52)
         traj_vecs.append(resample_fixed(flat).ravel())
-        rows_meta.append({"subject": subject, "variant": variant, "rep": int(rep), "correct": int(label)})
+        rows_meta.append({"subject": subject_id_for(f.name), "variant": variant,
+                           "rep": int(rep), "correct": int(label)})
 
-    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme)")
+    print(f"{len(rows_meta)} ripetizioni caricate, {n_skipped} file scartati (nome non conforme), "
+          f"{n_mocap_erroneous} scartati (mocap_erroneous)")
 
     meta = pd.DataFrame(rows_meta)
     traj_matrix = np.vstack(traj_vecs)

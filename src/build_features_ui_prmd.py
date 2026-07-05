@@ -25,7 +25,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "ui_prmd"
+DATA_DIR = ROOT / "data" / "raw" / "ui_prmd"
 OUT_PATH = ROOT / "data" / "features_ui_prmd.csv"
 
 FRAMES_PER_REP = 117

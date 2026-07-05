@@ -1,12 +1,5 @@
-# Experiment grid for run_experiments.py.
-# Add/remove/edit a dataset entry to change what gets run - no code changes needed.
-#
-# groups: null means no subject id available (CV is per-row, not per-subject - see
-# MODEL_CARD for where and why that matters).
-#
-# Every dataset uses the same full rigor (repeats: 20, full hyperparameter grids in
-# quality_model.py) - robustness matters more than runtime here. "status" below is purely
-# informational (what to make of the result), it does not change how hard the CV works.
+# Experiment grid for run_experiments.py. Add/remove/edit an entry to change what gets run.
+# groups: null means no subject id available (see MODEL_CARD). "status" is informational only.
 
 seed: 42
 outer_splits: 5
@@ -101,9 +94,7 @@ datasets:
     status: active
     note: phase-segmented features (early/mid/late third of each rep), see build_features_rehab24_phases.py
 
-  # position + velocity + acceleration trajectory-PCA (build_features_rehab24_dynamics.py):
-  # the plain rehab24_exN entries above use position only; movement smoothness/jerk is a
-  # known quality marker in the motor-control literature and was missing entirely.
+  # position + velocity + acceleration trajectory-PCA (build_features_rehab24_dynamics.py)
   - name: rehab24_ex1_dynamics
     features: data/features_rehab24_ex1_dynamics.csv
     target: correct
@@ -146,12 +137,8 @@ datasets:
     groups: subject
     status: active
 
-  # named joint-angle features (build_features_rehab24_anatomical.py): the joint mapping
-  # for REHAB24-6's 26 keypoints (data/ui_prmd/joints_names.txt, from the dataset's Zenodo
-  # record) is a standard mocap hierarchy, confirmed anatomically plausible. Replaces opaque
-  # PCA components with named angles (knee, hip, elbow, shoulder, trunk, ankle, knee valgus)
-  # - directly serves the project's own interpretability thesis (Pillar 1). Univariate check
-  # shows a much stronger, broader signal than any PCA-based feature set on every exercise.
+  # named joint-angle features (build_features_rehab24_anatomical.py), mapping confirmed
+  # via data/ui_prmd/joints_names.txt
   - name: rehab24_ex1_anatomical
     features: data/features_rehab24_ex1_anatomical.csv
     target: correct
@@ -194,13 +181,9 @@ datasets:
     groups: subject
     status: active
 
-  # leave-one-exercise-out: same anatomical features, pooled across all 6 exercises, but
-  # groups=exercise instead of groups=subject - train on 5 exercise types, test on the 6th,
-  # completely unseen. A small-scale, already-available proxy for Pillar 3 (domain transfer:
-  # does "correct execution" generalize across movement types, not just across subjects).
-  # outer_splits=6 with exactly 6 groups means one exercise per fold, deterministically, so
-  # repeats>1 would just recompute the identical split - repeats:1 is correct here, not a
-  # rigor shortcut.
+  # leave-one-exercise-out: anatomical features pooled across all 6 exercises, groups=exercise
+  # instead of groups=subject. outer_splits=6 with 6 groups is a deterministic split, so
+  # repeats:1 is correct here, not a shortcut.
   - name: rehab24_pooled_leave_one_exercise_out
     features: data/features_rehab24_pooled_anatomical.csv
     target: correct
@@ -209,4 +192,48 @@ datasets:
     outer_splits: 6
     repeats: 1
     status: active
-    note: Pillar 3 proxy - cross-exercise transfer, not cross-subject
+    note: cross-exercise transfer, not cross-subject
+
+  # turnaround-based phase segmentation (build_features_rehab24_biophases.py): descent/bottom/
+  # ascent located from each rep's own primary movement angle instead of equal time-thirds
+  - name: rehab24_ex1_biophases
+    features: data/features_rehab24_ex1_biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex2_biophases
+    features: data/features_rehab24_ex2_biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3_biophases
+    features: data/features_rehab24_ex3_biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4_biophases
+    features: data/features_rehab24_ex4_biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5_biophases
+    features: data/features_rehab24_ex5_biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6_biophases
+    features: data/features_rehab24_ex6_biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
