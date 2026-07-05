@@ -17,9 +17,11 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 
+from paths import RAW, kimore_features
+
 ROOT = Path(__file__).resolve().parents[1]
-PKL_PATH = ROOT / "data" / "raw" / "kimore" / "kimore_exercise_dataset.pkl"
-OUT_PATH = ROOT / "data" / "features_ex5.csv"
+PKL_PATH = RAW / "kimore" / "kimore_exercise_dataset.pkl"
+OUT_PATH = kimore_features("ex5")
 
 # angle is measured at the middle joint (vertex), lower-body only: relevant for a squat
 ANGLE_DEFS = {

@@ -21,11 +21,20 @@ Self-recorded Pilates:
     Record a few exercises (e.g. Hundred, Roll-Up, Shoulder Bridge, Single-Leg Stretch),
     each performed correctly and with 1-2 common faults, several reps, a few people.
     Get simple written consent. Place clips under data/raw/pilates/ (git-ignored).
+
+Directory layout (derived artifacts under data/features/, not committed):
+    data/raw/{kimore,ui_prmd,rehab24}/     raw downloads
+    data/features/kimore/                    ex5.csv, ex5_classification.csv
+    data/features/ui_prmd/                 classification.csv, regression.csv, deepsquat.csv
+    data/features/rehab24/ex{N}/            base, dynamics, anatomical, biophases, phases, deviation
+    data/features/rehab24/pooled_anatomical.csv   leave-one-exercise-out input
+    results/experiments/experiments.csv    nested-CV sweep output (run_experiments.py)
+    results/shap/                          SHAP CSVs (run_shap.py)
+
+Canonical path helpers live in src/paths.py.
 """
 
-from pathlib import Path
-
-RAW = Path(__file__).resolve().parents[1] / "data" / "raw"
+from paths import RAW
 
 
 def check_data():

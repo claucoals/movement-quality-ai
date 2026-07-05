@@ -3,7 +3,7 @@ Main experiment runner: reads config.yaml, runs nested CV (quality_model.nested_
 every dataset listed there, and appends every fold's result to one CSV.
 
 This is the only place that decides *what* gets run (via config.yaml) and *where* results
-go (results/experiments.csv). Notebooks only read that CSV - they never hold hand-typed
+go (results/experiments/experiments.csv). Notebooks only read that CSV - they never hold hand-typed
 numbers, so a rerun with a changed config always stays consistent with what notebooks show.
 
 Progress is printed with flush=True and a timestamp after every dataset (not buffered until
@@ -64,8 +64,8 @@ def save_results(new_results: pd.DataFrame, out_path: Path) -> pd.DataFrame:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
         existing = pd.read_csv(out_path)
-        ran_names = new_results["dataset"].unique()
-        existing = existing[~existing["dataset"].isin(ran_names)]
+        ran_names = new_results["dataset"].unique().tolist()
+        existing = existing.loc[~existing["dataset"].isin(ran_names)]
         combined = pd.concat([existing, new_results], ignore_index=True)
     else:
         combined = new_results
@@ -84,7 +84,7 @@ def main():
     p.add_argument("--output", default=None,
                     help="override config.yaml's output path - use a different file when "
                          "running concurrently with another run_experiments.py process, to "
-                         "avoid both writing to results/experiments.csv at once.")
+                         "avoid both writing to results/experiments/experiments.csv at once.")
     args = p.parse_args()
 
     with open(ROOT / args.config) as f:

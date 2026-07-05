@@ -19,8 +19,8 @@ Raw data is not committed (`.gitignore` excludes `data/` and `results/` entirely
 ```
 config.yaml            -> declares every dataset to run (features file, target, task, groups)
 src/run_experiments.py -> reads config.yaml, runs nested CV (src/quality_model.py) on each
-                           dataset, appends every fold's result to results/experiments.csv
-notebooks/07_experiments_analysis.ipynb -> reads results/experiments.csv, plots and tables
+                           dataset, appends every fold's result to results/experiments/experiments.csv
+notebooks/07_experiments_analysis.ipynb -> reads results/experiments/experiments.csv, plots and tables
 ```
 
 ```
@@ -28,7 +28,7 @@ python src/run_experiments.py                 # run everything in config.yaml
 python src/run_experiments.py --only ex1,ex2   # re-run just these dataset entries
 ```
 
-Every number in the notebooks is read from `results/experiments.csv` or computed live -
+Every number in the notebooks is read from `results/experiments/experiments.csv` or computed live -
 nothing is hand-typed.
 
 ## Repository structure
@@ -40,8 +40,6 @@ movement-quality-ai/
 ├── notebooks/
 │   ├── 01_eda_kimore.ipynb
 │   ├── 02_feature_check_ex5.ipynb
-│   ├── 03_pairwise_relative_check.ipynb
-│   ├── 04_classification_check.ipynb
 │   ├── 05_eda_ui_prmd.ipynb
 │   ├── 06_eda_rehab24.ipynb
 │   ├── 07_experiments_analysis.ipynb

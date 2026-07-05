@@ -16,9 +16,10 @@ import pandas as pd
 try:
     import cv2
     import mediapipe as mp
-    _POSE = mp.solutions.pose
+    _POSE = mp.solutions.pose  # pyright: ignore[reportAttributeAccessIssue]
     _HAS_MP = True
 except Exception:  # keep the module importable without the heavy deps installed
+    cv2 = None
     _HAS_MP = False
 
 
@@ -45,6 +46,7 @@ def video_to_angle_series(video_path: str) -> pd.DataFrame:
     """Return a DataFrame: one row per frame, one column per tracked joint angle."""
     if not _HAS_MP:
         raise ImportError("Install mediapipe and opencv-python to run pose extraction.")
+    assert cv2 is not None  # narrows for the type checker; guaranteed by _HAS_MP above
 
     lm_enum = _POSE.PoseLandmark
     rows = []

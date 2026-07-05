@@ -24,9 +24,10 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "raw" / "ui_prmd"
-OUT_PATH = ROOT / "data" / "features_ui_prmd.csv"
+from paths import RAW, ui_prmd_features
+
+DATA_DIR = RAW / "ui_prmd"
+OUT_PATH = ui_prmd_features("deepsquat")
 
 FRAMES_PER_REP = 117
 N_PCA_COMPONENTS = 20
@@ -58,7 +59,7 @@ def main():
         print(f"  pc{i}: {v:.3f}")
     print(f"Varianza cumulata con {N_PCA_COMPONENTS} componenti: {pca.explained_variance_ratio_.sum():.3f}")
 
-    out = pd.DataFrame(pcs, columns=[f"traj_pc{i+1}" for i in range(N_PCA_COMPONENTS)])
+    out = pd.DataFrame(pcs, columns=pd.Index(f"traj_pc{i+1}" for i in range(N_PCA_COMPONENTS)))
     out["quality_score"] = meta["quality_score"].values
     out["correct"] = meta["correct"].values
     out.to_csv(OUT_PATH, index=False)

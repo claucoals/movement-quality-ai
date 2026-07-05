@@ -1,8 +1,8 @@
 """
-Out-of-fold SHAP values for REHAB24-6's anatomical feature family.
+Out-of-fold SHAP values for a REHAB24-6 feature family (anatomical or biophases).
 
-For each exercise this picks whichever model type actually won that exercise in
-results/experiments.csv (read, not hardcoded - if a rerun of the sweep changes the winner,
+For each exercise this picks whichever model type actually won that exercise+family in
+results/experiments/experiments.csv (read, not hardcoded - if a rerun of the sweep changes the winner,
 this script follows it automatically), then explains it with model-agnostic permutation SHAP
 (shap.Explainer given the pipeline's predict_proba) - the same explainer code path for
 logreg, rf and mlp, no per-model-type special casing.
@@ -16,8 +16,8 @@ isn't an artifact of one arbitrary fold assignment - explaining a model on its o
 data would overstate how meaningful the attributions are, exactly like scoring one would.
 
 Usage:
-    python src/run_shap.py --exercise Ex1
-    python src/run_shap.py --all
+    python src/run_shap.py --exercise Ex1 --family anatomical
+    python src/run_shap.py --all --family biophases
 """
 
 from __future__ import annotations
@@ -26,9 +26,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import shap
+from shap.maskers import Independent as IndependentMasker
 from sklearn.model_selection import GridSearchCV
 
 from quality_model import build_models, _outer_splits
+
+from paths import EXPERIMENTS_CSV, SHAP_DIR, rehab24_features
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTER = 5
@@ -42,18 +45,19 @@ REPEATS = 5
 SEED = 42
 
 
-def pick_winning_model(exercise: str) -> str:
-    res = pd.read_csv(ROOT / "results" / "experiments.csv")
-    sub = res[(res["dataset"] == f"rehab24_{exercise.lower()}_anatomical") & (res["model"] != "dummy")]
+def pick_winning_model(exercise: str, family: str) -> str:
+    res = pd.read_csv(EXPERIMENTS_CSV)
+    dataset_name = f"rehab24_{exercise.lower()}_{family}"
+    sub = res[(res["dataset"] == dataset_name) & (res["model"] != "dummy")]
     if sub.empty:
-        raise SystemExit(f"No results for rehab24_{exercise.lower()}_anatomical in results/experiments.csv - "
+        raise SystemExit(f"No results for {dataset_name} in {EXPERIMENTS_CSV} - "
                           f"run src/run_experiments.py first.")
     means = sub.groupby("model")["auc"].mean()
-    return means.idxmax()
+    return str(means.idxmax())
 
 
-def run_exercise(exercise: str) -> pd.DataFrame:
-    path = ROOT / "data" / f"features_rehab24_{exercise.lower()}_anatomical.csv"
+def run_exercise(exercise: str, family: str) -> pd.DataFrame:
+    path = rehab24_features(exercise, family)
     df = pd.read_csv(path)
     y = df["correct"]
     groups = df["subject"]
@@ -63,7 +67,7 @@ def run_exercise(exercise: str) -> pd.DataFrame:
     feature_names = X.columns.tolist()
     n = len(X)
 
-    model_name = pick_winning_model(exercise)
+    model_name = pick_winning_model(exercise, family)
     print(f"[{exercise}] {n} samples, {groups.nunique()} subjects, winning model: {model_name}")
 
     pipe_template, grid = build_models("classification", SEED)[model_name]
@@ -85,11 +89,12 @@ def run_exercise(exercise: str) -> pd.DataFrame:
         best_pipe = gs.best_estimator_
 
         def predict_fn(arr, _pipe=best_pipe):
-            return _pipe.predict_proba(pd.DataFrame(arr, columns=feature_names))[:, 1]
+            return _pipe.predict_proba(pd.DataFrame(arr, columns=pd.Index(feature_names)))[:, 1]
 
-        masker = shap.maskers.Independent(Xtr.values, max_samples=Xtr.shape[0])
+        masker = IndependentMasker(Xtr.values, max_samples=Xtr.shape[0])
         explainer = shap.Explainer(predict_fn, masker, feature_names=feature_names)
         sv = explainer(Xte.values)
+        assert isinstance(sv, shap.Explanation), f"expected a single Explanation, got {type(sv)}"
 
         shap_sum[te] += sv.values
         shap_count[te] += 1
@@ -100,7 +105,7 @@ def run_exercise(exercise: str) -> pd.DataFrame:
     assert (shap_count == REPEATS).all(), "every sample must be held out exactly once per repeat"
     mean_shap = shap_sum / shap_count[:, None]
 
-    out = pd.DataFrame(mean_shap, columns=[f"shap__{c}" for c in feature_names])
+    out = pd.DataFrame(mean_shap, columns=pd.Index(f"shap__{c}" for c in feature_names))
     out.insert(0, "exercise", exercise)
     out.insert(1, "subject", groups.values)
     out.insert(2, "correct", y.values)
@@ -116,13 +121,14 @@ def main():
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--exercise", help="e.g. Ex1")
     g.add_argument("--all", action="store_true", help="run all 6 REHAB24 exercises")
+    p.add_argument("--family", default="anatomical", help="feature family: anatomical | biophases")
     args = p.parse_args()
 
     exercises = [f"Ex{i}" for i in range(1, 7)] if args.all else [args.exercise]
 
-    frames = [run_exercise(ex) for ex in exercises]
+    frames = [run_exercise(ex, args.family) for ex in exercises]
     combined = pd.concat(frames, ignore_index=True)
-    out_path = ROOT / "results" / "shap_rehab24_anatomical.csv"
+    out_path = SHAP_DIR / f"rehab24_{args.family}.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not args.all and out_path.exists():
