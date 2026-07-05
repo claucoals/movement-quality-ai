@@ -63,6 +63,13 @@ std, and a 95% bootstrap CI over outer folds) and plots, including:
   most important feature by SHAP, without ever being told that's what to look for. Across
   exercises, though, the top features are mostly exercise-specific (no feature appears in more
   than 2/6 exercises' top-5) - honestly, not yet a shared movement-quality vocabulary.
+- Known limitation, stated plainly rather than glossed over: `rep_dur_mean`/`rep_dur_std` in
+  `build_features_rehab24_anatomical.py` were meant as a movement-tempo proxy, but since each
+  file is already a single repetition, `find_peaks` frequently can't find the 2+ troughs it
+  needs and the feature comes back empty for many reps (visible as the imputer's "skipping
+  features without any observed values" warning during `run_shap.py`). This is an extraction
+  problem, not a weak signal - the feature should be treated as currently unreliable, not
+  low-importance, until it's recomputed from multi-rep sequences instead of per-rep files.
 - Per-phase deviation from reference: `build_features_rehab24_phases.py` (early/mid/late thirds)
   was the first attempt at this and didn't improve accuracy (see notebook 07) - the phase
   boundaries themselves were the likely problem (naive time-thirds, not biomechanical events),
