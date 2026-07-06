@@ -43,6 +43,24 @@ INNER = 3
 # one, so the averaged attribution isn't a fold-assignment artifact.
 REPEATS = 5
 SEED = 42
+# How many of the overall top features to check for rank stability across repeats (M5,
+# next_phase_plan.md section 4). 10 rather than every feature: with only REPEATS=5 rankers,
+# asking whether hundreds of near-zero-importance features keep a stable order is asking the
+# metric to resolve noise, not signal - the top-10 is the part of the ranking anyone would
+# actually read off a report.
+TOP_K_STABILITY = 10
+
+
+def kendalls_w(rank_matrix: np.ndarray) -> float:
+    """Kendall's coefficient of concordance for `rank_matrix` (n_items, n_raters): 1.0 means
+    every rater (here, every repeat's independently-trained model) ranked the items in
+    exactly the same order, 0 means no more agreement than chance. Standard way to report
+    SHAP-ranking stability across resamples (e.g. bootstrap-SHAP stability studies use the
+    same statistic) rather than an ad hoc stability notion."""
+    n, m = rank_matrix.shape
+    R = rank_matrix.sum(axis=1)
+    S = np.sum((R - R.mean()) ** 2)
+    return float(12 * S / (m ** 2 * (n ** 3 - n)))
 
 
 def pick_winning_model(exercise: str, family: str) -> str:
@@ -56,7 +74,7 @@ def pick_winning_model(exercise: str, family: str) -> str:
     return str(means.idxmax())
 
 
-def run_exercise(exercise: str, family: str) -> pd.DataFrame:
+def run_exercise(exercise: str, family: str) -> tuple[pd.DataFrame, dict]:
     path = rehab24_features(exercise, family)
     df = pd.read_csv(path)
     y = df["correct"]
@@ -74,6 +92,10 @@ def run_exercise(exercise: str, family: str) -> pd.DataFrame:
 
     shap_sum = np.zeros((n, len(feature_names)))
     shap_count = np.zeros(n)
+    # kept per-repeat (not just pooled into shap_sum) so stability across repeats can be
+    # checked (M5) - every sample gets exactly one row filled per repeat, since each repeat's
+    # OUTER folds partition the full sample set once.
+    shap_by_repeat = np.zeros((REPEATS, n, len(feature_names)))
     n_folds_done = 0
 
     for repeat_i, fold_i, tr, te in _outer_splits(X, y, groups, "classification", OUTER, REPEATS, SEED):
@@ -98,6 +120,7 @@ def run_exercise(exercise: str, family: str) -> pd.DataFrame:
 
         shap_sum[te] += sv.values
         shap_count[te] += 1
+        shap_by_repeat[repeat_i, te] = sv.values
         n_folds_done += 1
         print(f"  repeat {repeat_i + 1} fold {fold_i + 1}: best_params={gs.best_params_}, "
               f"explained {len(te)} held-out samples")
@@ -113,7 +136,21 @@ def run_exercise(exercise: str, family: str) -> pd.DataFrame:
     for c in feature_names:
         out[f"value__{c}"] = X[c].values
     print(f"  -> {n} samples explained ({n_folds_done} fold fits total)")
-    return out
+
+    overall_importance = np.abs(mean_shap).mean(axis=0)
+    top_idx = np.argsort(overall_importance)[::-1][:TOP_K_STABILITY]
+    # rank (1 = most important) each repeat's own feature ordering, restricted to the
+    # features that are top-K overall - asks "do repeats agree on the order of the features
+    # that matter", not "do repeats agree on hundreds of near-zero features".
+    per_repeat_importance = np.abs(shap_by_repeat).mean(axis=1)  # (REPEATS, n_features)
+    ranks = np.apply_along_axis(lambda v: len(v) - np.argsort(np.argsort(v)), 1, per_repeat_importance)
+    rank_matrix = ranks[:, top_idx].T  # (TOP_K_STABILITY, REPEATS)
+    w = kendalls_w(rank_matrix)
+    stability = {"exercise": exercise, "family": family, "model": model_name,
+                 "n_repeats": REPEATS, "top_k": len(top_idx), "kendalls_w": w,
+                 "top_features": ";".join(feature_names[i] for i in top_idx)}
+    print(f"  -> stability: Kendall's W (top-{len(top_idx)} across {REPEATS} repeats) = {w:.3f}")
+    return out, stability
 
 
 def main():
@@ -126,18 +163,31 @@ def main():
 
     exercises = [f"Ex{i}" for i in range(1, 7)] if args.all else [args.exercise]
 
-    frames = [run_exercise(ex, args.family) for ex in exercises]
+    results = [run_exercise(ex, args.family) for ex in exercises]
+    frames = [r[0] for r in results]
+    stability_rows = [r[1] for r in results]
+
     combined = pd.concat(frames, ignore_index=True)
     out_path = SHAP_DIR / f"rehab24_{args.family}.csv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    stability_path = SHAP_DIR / f"rehab24_{args.family}_stability.csv"
+    stability_df = pd.DataFrame(stability_rows)
 
     if not args.all and out_path.exists():
         existing = pd.read_csv(out_path)
         existing = existing[existing["exercise"] != args.exercise]
         combined = pd.concat([existing, combined], ignore_index=True)
 
+        if stability_path.exists():
+            existing_stability = pd.read_csv(stability_path)
+            existing_stability = existing_stability[existing_stability["exercise"] != args.exercise]
+            stability_df = pd.concat([existing_stability, stability_df], ignore_index=True)
+
     combined.to_csv(out_path, index=False)
+    stability_df.to_csv(stability_path, index=False)
     print(f"\n{combined.shape[0]} righe totali -> {out_path}")
+    print(f"{stability_df.shape[0]} righe di stabilita' -> {stability_path}")
 
 
 if __name__ == "__main__":
