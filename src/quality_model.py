@@ -34,7 +34,6 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.model_selection import (GridSearchCV, KFold, StratifiedKFold,
-                                     RepeatedKFold, RepeatedStratifiedKFold,
                                      GroupKFold, StratifiedGroupKFold)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -65,7 +64,15 @@ RF_N_ESTIMATORS = 500
 # detect a plateau and stop early, which is also a legitimate regularizer, not just a speed hack.
 
 
-def build_models(task: str, seed: int):
+def build_models(task: str, seed: int, repeat_i: int = 0):
+    """repeat_i only varies DummyClassifier's random_state (see call site in nested_cv): a
+    fresh DummyClassifier(random_state=seed) built every repeat/fold, as this function is,
+    gives byte-identical "random" predictions whenever the same test-fold shape recurs -
+    which is constant with only 8-9 subjects - so the dummy baseline's repeats were not
+    independent draws and its mean was biased well away from the 0.5 a stratified-guess
+    baseline should have. Ridge/RF/MLP keep random_state=seed unvaried on purpose: it isolates
+    how much performance varies because of the CV split from how much varies because of the
+    model's own internal randomness (bootstrap sampling, weight init)."""
     if task == "regression":
         return {
             "dummy": (Pipeline([("imp", SimpleImputer(strategy="median")),
@@ -93,7 +100,7 @@ def build_models(task: str, seed: int):
         }
     return {
         "dummy": (Pipeline([("imp", SimpleImputer(strategy="median")),
-                            ("m", DummyClassifier(strategy="stratified", random_state=seed))]), {}),
+                            ("m", DummyClassifier(strategy="stratified", random_state=seed + repeat_i))]), {}),
         "logreg": (Pipeline([("imp", SimpleImputer(strategy="median")),
                              ("sc", StandardScaler()),
                              ("fs", SelectPercentile(f_classif)),
@@ -168,7 +175,7 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10, gr
         else:
             inner_cv = (KFold(inner, shuffle=True, random_state=seed + repeat_i) if task == "regression"
                         else StratifiedKFold(inner, shuffle=True, random_state=seed + repeat_i))
-        for name, (pipe, grid) in build_models(task, seed).items():
+        for name, (pipe, grid) in build_models(task, seed, repeat_i).items():
             gs = GridSearchCV(pipe, grid, scoring=scoring, cv=inner_cv, n_jobs=-1)
             gs.fit(Xtr, ytr)
             pred = gs.predict(Xte)

@@ -25,7 +25,7 @@ Self-recorded Pilates:
 Directory layout (derived artifacts under data/features/, not committed):
     data/raw/{kimore,ui_prmd,rehab24}/     raw downloads
     data/features/kimore/                    ex5.csv, ex5_classification.csv
-    data/features/ui_prmd/                 classification.csv, regression.csv, deepsquat.csv
+    data/features/ui_prmd/                 classification.csv, regression.csv
     data/features/rehab24/ex{N}/            base, dynamics, anatomical, biophases, phases, deviation
     data/features/rehab24/pooled_anatomical.csv   leave-one-exercise-out input
     results/experiments/experiments.csv    nested-CV sweep output (run_experiments.py)

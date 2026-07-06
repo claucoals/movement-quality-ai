@@ -14,12 +14,11 @@ datasets:
     groups: null
     status: closed    # see MODEL_CARD: no signal found across many prior feature families
 
-  - name: kimore_ex5_classification
-    features: data/features/kimore/ex5_classification.csv
-    target: quality_label
-    task: classification
-    groups: null
-    status: closed
+  # kimore_ex5_classification (quality_label target, spectral + PCA features) removed from
+  # this catalog: its feature file predates the current build scripts (no script in src/
+  # computes spectral features or a quality_label target) and can't be regenerated. Its past
+  # results are still in results/experiments/experiments.csv and MODEL_CARD's KIMORE summary;
+  # the raw CSV itself is untouched on disk, just not offered here as a rerunnable entry.
 
   - name: ui_prmd_deepsquat_classification
     features: data/features/ui_prmd/classification.csv

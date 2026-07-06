@@ -9,8 +9,9 @@ file, so features here treat each repetition's (117, 240) block as a generic
 multivariate time series (same trajectory-PCA approach as
 build_features_trajectory.py for KIMORE), not hand-picked joint angles.
 
-Two targets are produced: `quality_score` (continuous, from Labels_*.csv) and
-`correct` (1 = correct repetition, 0 = incorrect) - the exercise-specific
+Two targets are produced, each in its own file so config.yaml/datasets.yaml can point at
+a dataset with exactly one target column: `classification.csv` (correct, 1/0) and
+`regression.csv` (quality_score, continuous, from Labels_*.csv) - the exercise-specific
 label KIMORE's cTS could never give us.
 
 Usage:
@@ -27,7 +28,6 @@ from sklearn.preprocessing import StandardScaler
 from paths import RAW, ui_prmd_features
 
 DATA_DIR = RAW / "ui_prmd"
-OUT_PATH = ui_prmd_features("deepsquat")
 
 FRAMES_PER_REP = 117
 N_PCA_COMPONENTS = 20
@@ -60,11 +60,18 @@ def main():
     print(f"Varianza cumulata con {N_PCA_COMPONENTS} componenti: {pca.explained_variance_ratio_.sum():.3f}")
 
     out = pd.DataFrame(pcs, columns=pd.Index(f"traj_pc{i+1}" for i in range(N_PCA_COMPONENTS)))
-    out["quality_score"] = meta["quality_score"].values
-    out["correct"] = meta["correct"].values
-    out.to_csv(OUT_PATH, index=False)
+
+    classification = out.copy()
+    classification["correct"] = meta["correct"].values
+    classification.to_csv(ui_prmd_features("classification"), index=False)
+
+    regression = out.copy()
+    regression["quality_score"] = meta["quality_score"].values
+    regression.to_csv(ui_prmd_features("regression"), index=False)
+
     print(f"\n{out.shape[0]} ripetizioni ({meta_c.shape[0]} corrette + {meta_i.shape[0]} scorrette), "
-          f"{N_PCA_COMPONENTS} feature -> {OUT_PATH}")
+          f"{N_PCA_COMPONENTS} feature -> {ui_prmd_features('classification')}, "
+          f"{ui_prmd_features('regression')}")
 
 
 if __name__ == "__main__":
