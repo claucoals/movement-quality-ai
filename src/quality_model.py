@@ -13,6 +13,17 @@ Usage:
 """
 
 from __future__ import annotations
+
+# Must happen before numpy/sklearn are imported. Each GridSearchCV(n_jobs=-1) worker process
+# also runs numpy's own BLAS calls, which by default multithread across every logical core -
+# 22 joblib processes x 22 BLAS threads each oversubscribes a 22-thread machine ~22x over,
+# and was observed to OOM-kill worker processes mid-fit (joblib silently respawns and retries,
+# which is what turned a ~70min run into a 10+ hour one). Pin BLAS to 1 thread per worker so
+# joblib's process-level parallelism is the only parallelism.
+import os
+for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_v, "1")
+
 import argparse
 import numpy as np
 import pandas as pd
@@ -37,13 +48,21 @@ from scipy.stats import spearmanr
 # (base) to 216 (biophases), and a fixed k would be either too small to matter for base or
 # too large to do anything for biophases. Percentile keeps the same grid meaningful across
 # every family - it is measured against whatever X.shape[1] actually is for that dataset.
-FS_PERCENTILE_GRID = [25, 50, 75, 100]
+# Only 2 levels, not a finer sweep: inner folds here have ~50 samples, and comparing more
+# candidates against that little data doesn't resolve a real optimum, it mostly fits inner-CV
+# noise (Cawley & Talbot 2010, JMLR - overfitting in model selection itself, independent of
+# the leakage SelectPercentile-in-Pipeline already prevents).
+FS_PERCENTILE_GRID = [50, 100]
+
+# Same reasoning fixes RF's n_estimators rather than searching it (was the largest single
+# combinatorial driver: 3 values x every other RF dimension): RF accuracy is well known to be
+# flat above a few hundred trees, so searching it mostly bought noise, not a better model.
+RF_N_ESTIMATORS = 500
 
 # MLP's default (early_stopping=False) trains for the full max_iter regardless of whether it's
-# still improving - with 4x more (fs__percentile x hyperparameter) combinations to search now,
-# combinations that don't converge quickly no longer just cost a bit of extra time each, they
-# multiply into hours. early_stopping holds out part of the training fold to detect a plateau
-# and stop early, which is also a legitimate regularizer, not just a speed hack.
+# still improving - combinations that don't converge quickly no longer just cost a bit of extra
+# time each, they multiply into hours. early_stopping holds out part of the training fold to
+# detect a plateau and stop early, which is also a legitimate regularizer, not just a speed hack.
 
 
 def build_models(task: str, seed: int):
@@ -60,9 +79,8 @@ def build_models(task: str, seed: int):
             "rf": (Pipeline([("imp", SimpleImputer(strategy="median")),
                              ("sc", StandardScaler()),
                              ("fs", SelectPercentile(f_regression)),
-                             ("m", RandomForestRegressor(random_state=seed))]),
+                             ("m", RandomForestRegressor(n_estimators=RF_N_ESTIMATORS, random_state=seed))]),
                    {"fs__percentile": FS_PERCENTILE_GRID,
-                    "m__n_estimators": [300, 600, 900],
                     "m__max_depth": [None, 3, 5, 10],
                     "m__min_samples_leaf": [1, 2, 4]}),
             "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
@@ -85,9 +103,9 @@ def build_models(task: str, seed: int):
         "rf": (Pipeline([("imp", SimpleImputer(strategy="median")),
                          ("sc", StandardScaler()),
                          ("fs", SelectPercentile(f_classif)),
-                         ("m", RandomForestClassifier(random_state=seed))]),
+                         ("m", RandomForestClassifier(n_estimators=RF_N_ESTIMATORS, random_state=seed))]),
                {"fs__percentile": FS_PERCENTILE_GRID,
-                "m__n_estimators": [300, 600, 900], "m__max_depth": [None, 5, 10],
+                "m__max_depth": [None, 5, 10],
                 "m__min_samples_leaf": [1, 2, 4]}),
         "mlp": (Pipeline([("imp", SimpleImputer(strategy="median")),
                           ("sc", StandardScaler()),

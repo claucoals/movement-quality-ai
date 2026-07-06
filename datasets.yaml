@@ -1,0 +1,273 @@
+# Reference catalog only - nothing reads this file automatically. It exists so switching
+# experiments doesn't mean retyping feature paths/target/group columns from memory: copy one
+# entry's fields into config.yaml's `dataset:` block, then run src/run_experiments.py.
+#
+# status: closed = investigated, no signal, not worth rerunning (see MODEL_CARD).
+#         indicative = small/exploratory comparison point, not a conclusive result.
+#         active = the project's main line of work.
+
+datasets:
+  - name: kimore_ex5_regression
+    features: data/features/kimore/ex5.csv
+    target: cTS
+    task: regression
+    groups: null
+    status: closed    # see MODEL_CARD: no signal found across many prior feature families
+
+  - name: kimore_ex5_classification
+    features: data/features/kimore/ex5_classification.csv
+    target: quality_label
+    task: classification
+    groups: null
+    status: closed
+
+  - name: ui_prmd_deepsquat_classification
+    features: data/features/ui_prmd/classification.csv
+    target: correct
+    task: classification
+    groups: null
+    status: indicative  # no subject id released -> leakage risk, not conclusive
+
+  - name: ui_prmd_deepsquat_regression
+    features: data/features/ui_prmd/regression.csv
+    target: quality_score
+    task: regression
+    groups: null
+    status: indicative  # quality_score is circular (GMM loglikelihood of similar data)
+
+  - name: rehab24_ex1
+    features: data/features/rehab24/ex1/base.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex1_ungrouped
+    features: data/features/rehab24/ex1/base.csv
+    target: correct
+    task: classification
+    groups: null
+    status: active
+    note: deliberately wrong split, kept only to show why groups matter (see MODEL_CARD)
+
+  - name: rehab24_ex2
+    features: data/features/rehab24/ex2/base.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3
+    features: data/features/rehab24/ex3/base.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4
+    features: data/features/rehab24/ex4/base.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5
+    features: data/features/rehab24/ex5/base.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6
+    features: data/features/rehab24/ex6/base.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex1_phases
+    features: data/features/rehab24/ex1/phases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+    note: phase-segmented features (early/mid/late third of each rep), see build_features_rehab24_phases.py
+
+  - name: rehab24_ex1_dynamics
+    features: data/features/rehab24/ex1/dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex2_dynamics
+    features: data/features/rehab24/ex2/dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3_dynamics
+    features: data/features/rehab24/ex3/dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4_dynamics
+    features: data/features/rehab24/ex4/dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5_dynamics
+    features: data/features/rehab24/ex5/dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6_dynamics
+    features: data/features/rehab24/ex6/dynamics.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex1_anatomical
+    features: data/features/rehab24/ex1/anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex2_anatomical
+    features: data/features/rehab24/ex2/anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3_anatomical
+    features: data/features/rehab24/ex3/anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4_anatomical
+    features: data/features/rehab24/ex4/anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5_anatomical
+    features: data/features/rehab24/ex5/anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6_anatomical
+    features: data/features/rehab24/ex6/anatomical.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_pooled_leave_one_exercise_out
+    features: data/features/rehab24/pooled_anatomical.csv
+    target: correct
+    task: classification
+    groups: exercise
+    outer_splits: 6
+    repeats: 1
+    status: active
+    note: cross-exercise transfer, not cross-subject
+
+  - name: rehab24_ex1_biophases
+    features: data/features/rehab24/ex1/biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex2_biophases
+    features: data/features/rehab24/ex2/biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3_biophases
+    features: data/features/rehab24/ex3/biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4_biophases
+    features: data/features/rehab24/ex4/biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5_biophases
+    features: data/features/rehab24/ex5/biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6_biophases
+    features: data/features/rehab24/ex6/biophases.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex1_deviation
+    features: data/features/rehab24/ex1/deviation.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+    note: mean absolute deviation from a leave-subject-out reference trajectory (CoRe-light), see build_reference_deviation.py
+
+  - name: rehab24_ex2_deviation
+    features: data/features/rehab24/ex2/deviation.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex3_deviation
+    features: data/features/rehab24/ex3/deviation.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex4_deviation
+    features: data/features/rehab24/ex4/deviation.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex5_deviation
+    features: data/features/rehab24/ex5/deviation.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
+
+  - name: rehab24_ex6_deviation
+    features: data/features/rehab24/ex6/deviation.csv
+    target: correct
+    task: classification
+    groups: subject
+    status: active
