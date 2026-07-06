@@ -38,7 +38,8 @@ from sklearn.model_selection import (GridSearchCV, KFold, StratifiedKFold,
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (balanced_accuracy_score, roc_auc_score,
-                             mean_absolute_error, r2_score)
+                             mean_absolute_error, r2_score,
+                             brier_score_loss, matthews_corrcoef)
 from scipy.stats import spearmanr
 
 
@@ -184,13 +185,18 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10, gr
                 m = {"mae": mean_absolute_error(yte, pred), "r2": r2_score(yte, pred),
                      "spearman": spearman_rho}
             else:
+                proba = gs.predict_proba(Xte)[:, 1]
                 try:
-                    auc = roc_auc_score(yte, gs.predict_proba(Xte)[:, 1])
+                    auc = roc_auc_score(yte, proba)
                 except ValueError:
                     # only a single class in yte (possible with tiny/imbalanced group-held-out
                     # folds) makes AUC undefined - anything else should surface, not hide as NaN
                     auc = np.nan
-                m = {"bal_acc": balanced_accuracy_score(yte, pred), "auc": auc}
+                m = {"bal_acc": balanced_accuracy_score(yte, pred), "auc": auc,
+                     # calibration (are predicted probabilities trustworthy, not just ranking)
+                     "brier": brier_score_loss(yte, proba),
+                     # single-number metric robust to the mild class imbalance some folds have
+                     "mcc": matthews_corrcoef(yte, pred)}
             m["repeat"], m["fold"] = repeat_i + 1, fold_i + 1
             results[name].append(m)
             if verbose:
