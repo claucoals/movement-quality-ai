@@ -23,6 +23,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from anatomical_features import angle_at_vertex, knee_valgus_ratio, summary_features
 from rehab24_common import iter_reps, parse_exercise_arg
 
 from paths import rehab24_features
@@ -52,54 +53,24 @@ ANGLE_DEFS = {
 
 
 def angle_series(arr: np.ndarray, a: str, b: str, c: str) -> np.ndarray:
-    pa, pb, pc = arr[:, JOINT_IDX[a]], arr[:, JOINT_IDX[b]], arr[:, JOINT_IDX[c]]
-    ba, bc = pa - pb, pc - pb
-    cos = np.sum(ba * bc, axis=1) / (np.linalg.norm(ba, axis=1) * np.linalg.norm(bc, axis=1) + 1e-9)
-    return np.degrees(np.arccos(np.clip(cos, -1.0, 1.0)))
+    return angle_at_vertex(arr[:, JOINT_IDX[a]], arr[:, JOINT_IDX[b]], arr[:, JOINT_IDX[c]])
 
 
 def knee_valgus_proxy(arr: np.ndarray) -> np.ndarray:
-    """Ratio of inter-knee to inter-hip distance: well below 1 means the knees are caving
-    in relative to the hips (valgus), a classic squat/lunge quality fault. Uses x (lateral
-    pixel) distance only, since the camera is roughly frontal for these exercises.
-
-    hip_dist genuinely collapses toward zero in some frames - not a tracking error, just
-    ordinary 2D-projection foreshortening as the hips momentarily align along the camera's
-    viewing axis during the movement - which blows the ratio up to values in the thousands
-    (checked across REHAB24-6: ~10% of frames have hip_dist under a fifth of that trial's
-    median, and the resulting ratio reaches into the tens of thousands at the extreme). A
-    fixed epsilon does nothing against that, since the denominator itself is a real small
-    number, not literally zero. Flooring hip_dist at a fraction of *that trial's own* median
-    keeps the signal meaningful and adapts to each subject/camera's scale, instead of an
-    arbitrary global constant."""
-    knee_dist = np.abs(arr[:, JOINT_IDX["l_leg"]][:, 0] - arr[:, JOINT_IDX["r_leg"]][:, 0])
-    hip_dist = np.abs(arr[:, JOINT_IDX["l_upleg"]][:, 0] - arr[:, JOINT_IDX["r_upleg"]][:, 0])
-    floor = 0.25 * np.median(hip_dist)
-    return knee_dist / np.maximum(hip_dist, floor)
+    """REHAB24-specific joint lookup for the shared knee_valgus_ratio formula
+    (anatomical_features.py) - "l_leg"/"r_leg" are this schema's knee joints (see JOINT_IDX;
+    "leg" = shin bone, starting at the knee), "l_upleg"/"r_upleg" its hip joints. Uses x
+    (lateral pixel) distance only, since the camera is roughly frontal for these exercises
+    (confirmed via data/raw/rehab24/annotations.csv's `orientation` column - true for 5/6
+    exercises, not Ex3/push-ups, which is filmed in profile; harmless there since valgus isn't
+    a push-up quality marker and SHAP doesn't pick it up for that exercise)."""
+    return knee_valgus_ratio(arr[:, JOINT_IDX["l_leg"]], arr[:, JOINT_IDX["r_leg"]],
+                              arr[:, JOINT_IDX["l_upleg"]], arr[:, JOINT_IDX["r_upleg"]])
 
 
 def subject_features(arr: np.ndarray) -> dict:
-    feats = {}
-    for name, (a, b, c) in ANGLE_DEFS.items():
-        s = angle_series(arr, a, b, c)
-        v = np.diff(s)
-        feats[f"{name}_min"] = s.min()
-        feats[f"{name}_max"] = s.max()
-        feats[f"{name}_rom"] = s.max() - s.min()
-        feats[f"{name}_mean"] = s.mean()
-        feats[f"{name}_std"] = s.std()
-        feats[f"{name}_vel_mean_abs"] = np.abs(v).mean()
-        feats[f"{name}_vel_max_abs"] = np.abs(v).max()
-
-    feats["sym_elbow"] = abs(feats["l_elbow_rom"] - feats["r_elbow_rom"])
-    feats["sym_knee"] = abs(feats["l_knee_rom"] - feats["r_knee_rom"])
-    feats["sym_hip"] = abs(feats["l_hip_rom"] - feats["r_hip_rom"])
-    feats["sym_shoulder"] = abs(feats["l_shoulder_angle_rom"] - feats["r_shoulder_angle_rom"])
-
-    valgus = knee_valgus_proxy(arr)
-    feats["knee_valgus_min"] = valgus.min()
-    feats["knee_valgus_mean"] = valgus.mean()
-    return feats
+    angle_signals = {name: angle_series(arr, *triple) for name, triple in ANGLE_DEFS.items()}
+    return summary_features(angle_signals, knee_valgus_proxy(arr))
 
 
 def main():
