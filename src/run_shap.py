@@ -29,7 +29,7 @@ import shap
 from shap.maskers import Independent as IndependentMasker
 from sklearn.model_selection import GridSearchCV
 
-from quality_model import build_models, _outer_splits
+from quality_model import build_models, _outer_splits, N_JOBS
 
 from paths import EXPERIMENTS_CSV, SHAP_DIR, rehab24_features
 
@@ -106,7 +106,7 @@ def run_exercise(exercise: str, family: str) -> tuple[pd.DataFrame, dict]:
         inner_splits = list(_outer_splits(Xtr, ytr, groups_tr, "classification", INNER, 1, SEED + repeat_i))
         inner_cv = [(a, b) for _, _, a, b in inner_splits]
 
-        gs = GridSearchCV(pipe_template, grid, scoring="balanced_accuracy", cv=inner_cv, n_jobs=-1)
+        gs = GridSearchCV(pipe_template, grid, scoring="balanced_accuracy", cv=inner_cv, n_jobs=N_JOBS)
         gs.fit(Xtr, ytr)
         best_pipe = gs.best_estimator_
 

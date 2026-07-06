@@ -64,6 +64,14 @@ RF_N_ESTIMATORS = 500
 # time each, they multiply into hours. early_stopping holds out part of the training fold to
 # detect a plateau and stop early, which is also a legitimate regularizer, not just a speed hack.
 
+# GridSearchCV's own parallelism, not to be confused with the BLAS-thread fix above (that
+# controls threads *within* one worker; this controls how many worker *processes* run at once).
+# This machine has 22 logical cores but as little as 3GB free RAM even at idle - 22 concurrent
+# worker processes was observed to occasionally exceed that and get OOM-killed mid-fit (one
+# nested-CV run took 3.8 hours instead of ~15min, and a later one crashed outright). Capping
+# at 6 trades some wall-clock time for actually finishing reliably.
+N_JOBS = 6
+
 
 def build_models(task: str, seed: int, repeat_i: int = 0):
     """repeat_i only varies DummyClassifier's random_state (see call site in nested_cv): a
@@ -177,7 +185,7 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10, gr
             inner_cv = (KFold(inner, shuffle=True, random_state=seed + repeat_i) if task == "regression"
                         else StratifiedKFold(inner, shuffle=True, random_state=seed + repeat_i))
         for name, (pipe, grid) in build_models(task, seed, repeat_i).items():
-            gs = GridSearchCV(pipe, grid, scoring=scoring, cv=inner_cv, n_jobs=-1)
+            gs = GridSearchCV(pipe, grid, scoring=scoring, cv=inner_cv, n_jobs=N_JOBS)
             gs.fit(Xtr, ytr)
             pred = gs.predict(Xte)
             if task == "regression":
