@@ -1,0 +1,70 @@
+name: Run experiments
+
+# Runs the datasets.yaml catalog on GitHub's hosted runners instead of a local machine -
+# each dataset is an independent job (dedicated ~7GB RAM, nothing else competing for it),
+# not one long sequential process, so one dataset's grid search can't starve another's and
+# a single hung job can't block the rest. Manual trigger only: this is meant to be launched
+# deliberately for a specific batch, not on every push.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Comma-separated dataset names to run (blank = every dataset in datasets.yaml)"
+        required: false
+        default: ""
+
+jobs:
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      datasets: ${{ steps.gen.outputs.datasets }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os, yaml
+          with open("datasets.yaml") as f:
+              all_datasets = yaml.safe_load(f)["datasets"]
+          only = os.environ.get("ONLY", "").strip()
+          wanted = {n.strip() for n in only.split(",") if n.strip()} if only else None
+          names = [d["name"] for d in all_datasets if wanted is None or d["name"] in wanted]
+          print("datasets=" + json.dumps(names))
+          EOF
+        env:
+          ONLY: ${{ inputs.only }}
+
+  run-dataset:
+    needs: generate-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        dataset: ${{ fromJson(needs.generate-matrix.outputs.datasets) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy pandas scikit-learn scipy pyyaml
+      - name: Build config.yaml for this dataset
+        run: |
+          python3 - <<'EOF'
+          import yaml
+          with open("datasets.yaml") as f:
+              all_datasets = yaml.safe_load(f)["datasets"]
+          entry = next(d for d in all_datasets if d["name"] == "${{ matrix.dataset }}")
+          with open("config.yaml") as f:
+              cfg = yaml.safe_load(f)
+          cfg["dataset"] = {k: v for k, v in entry.items() if k not in ("status", "note")}
+          with open("config.yaml", "w") as f:
+              yaml.safe_dump(cfg, f, sort_keys=False)
+          EOF
+      - name: Run the experiment
+        run: python src/run_experiments.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.dataset }}
+          path: results/experiments/experiments.csv
+          retention-days: 14
