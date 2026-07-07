@@ -1,5 +1,5 @@
 """
-Gate 4 (deviation diagnostics): persists what univariate_check.py already computes for every
+Persists what univariate_check.py already computes for every
 deviation__phase__joint feature (Mann-Whitney AUC + Cohen's d vs `correct`) as one reusable
 CSV across all 6 REHAB24 exercises, instead of six separate stdout-only runs that nothing
 keeps. No new statistics - same function univariate_check.py already exposes, just looped and

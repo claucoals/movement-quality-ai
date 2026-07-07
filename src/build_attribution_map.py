@@ -1,11 +1,9 @@
 """
-Gate 5 / Milestone 4: Movement Attribution Map (importance x deviation).
-
-Fuses two things already computed by earlier gates into the phase x joint matrix the whole
-project is aimed at (see next_phase_plan.md section 3):
-  - Pipeline A, "what does the model rely on": results/shap/rehab24_biophases.csv, out-of-fold
+Movement Attribution Map: fuses SHAP importance and reference-trajectory deviation into a
+phase x joint matrix, combining two things this project already computes separately:
+  - "what does the model rely on": results/shap/rehab24_biophases.csv, out-of-fold
     SHAP per (phase, feature) - see run_shap.py.
-  - Pipeline B, "how far from correct technique": results/univariate/rehab24_deviation.csv,
+  - "how far from correct technique": results/univariate/rehab24_deviation.csv,
     Mann-Whitney AUC + Cohen's d per (phase, joint) - see run_univariate_deviation.py.
 
 Neither input is touched by the dummy-classifier bias fix in quality_model.py (that only
@@ -15,10 +13,9 @@ full resweep to finish.
 
 Percentile rank, not raw magnitude, is the fusion currency on both sides: SHAP magnitude is
 not comparable across feature-family sizes (splitting knee_valgus_min into 3 phase-features
-alone drops its rank from 1/86 to 8/216 by dilution alone, see MODEL_CARD's Gate 3 note) -
-percentile-within-exercise cancels that out. That is exactly why the vision doc specifies
-percentile(SHAP) x percentile(deviation) rather than raw values - confirmed necessary here,
-not just a nice default.
+alone drops its rank from 1/86 to 8/216 by dilution alone) - percentile-within-exercise
+cancels that out. Fusing percentile(SHAP) x percentile(deviation) rather than raw values is
+necessary for that reason, not just a nice default.
 
 Both sides are aggregated from per-feature to per-joint by stripping the L/R split and the
 summary-stat suffix (_min/_max/_rom/_mean/_std/_vel_mean_abs): the matrix this project's
@@ -70,7 +67,7 @@ def joint_of(stem: str) -> str | None:
 
 def shap_importance(exercise: str) -> pd.DataFrame:
     """Mean|SHAP| per (phase, joint) for one exercise, from the out-of-fold biophases SHAP
-    values every sample already has (run_shap.py --all --family biophases)."""
+    values already computed by run_shap.py --all --family biophases."""
     df = pd.read_csv(SHAP_PATH)
     g = df[df["exercise"] == exercise]
     if g.empty:
@@ -93,7 +90,7 @@ def shap_importance(exercise: str) -> pd.DataFrame:
 
 
 def deviation_signal(exercise: str) -> pd.DataFrame:
-    """Mean|Cohen's d| per (phase, joint) for one exercise, from Gate 4's saved univariate
+    """Mean|Cohen's d| per (phase, joint) for one exercise, from the saved univariate
     deviation diagnostics (run_univariate_deviation.py)."""
     df = pd.read_csv(DEVIATION_PATH)
     g = df[df["exercise"] == exercise.lower()]

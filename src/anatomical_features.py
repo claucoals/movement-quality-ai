@@ -3,10 +3,10 @@ Shared angle-signal -> summary-feature logic for anatomical (named joint-angle) 
 
 Used by both build_features_rehab24_anatomical.py (mocap-derived REHAB24 keypoints) and
 pose_to_features.py (MediaPipe smartphone video) - kept in one place specifically so a
-Pilates clip and a REHAB24 rep land in the identical feature-vector schema (next_phase_plan.md
-section 6, Gap 1): same column names, same summary statistics, same knee-valgus definition.
-Without this, "train on REHAB24, test on Pilates" is architecturally impossible, not just
-underpowered, because the feature spaces wouldn't match.
+Pilates clip and a REHAB24 rep land in the identical feature-vector schema: same column
+names, same summary statistics, same knee-valgus definition. Without this, "train on
+REHAB24, test on Pilates" is architecturally impossible, not just underpowered, because the
+feature spaces wouldn't match.
 
 Each caller supplies its own joint-position lookup (REHAB24's 26-joint mocap indexing vs
 MediaPipe's 33 landmarks are different schemas) - this module only knows about raw point
@@ -40,10 +40,10 @@ def knee_valgus_ratio(l_knee: np.ndarray, r_knee: np.ndarray,
     floored at a fraction of its own trial median rather than a fixed epsilon: it can
     genuinely collapse toward zero from ordinary 2D-projection foreshortening (not a tracking
     error) when the hips momentarily align along the camera's viewing axis, and a fixed
-    epsilon does nothing against a real small denominator. Known limitation (see
-    next_phase_plan.md section 6, Gap 2): monocular RGB pose estimation is specifically less
-    reliable for this, coronal-plane, angle than for sagittal-plane ones - this formula is the
-    same on REHAB24 and on phone video, but the two inputs are not equally trustworthy."""
+    epsilon does nothing against a real small denominator. Known limitation: monocular RGB
+    pose estimation is specifically less reliable for this, coronal-plane, angle than for
+    sagittal-plane ones - this formula is the same on REHAB24 and on phone video, but the two
+    inputs are not equally trustworthy."""
     knee_dist = np.abs(l_knee[..., 0] - r_knee[..., 0])
     hip_dist = np.abs(l_hip[..., 0] - r_hip[..., 0])
     floor = 0.25 * np.median(hip_dist)

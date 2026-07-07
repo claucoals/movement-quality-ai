@@ -43,8 +43,8 @@ INNER = 3
 # one, so the averaged attribution isn't a fold-assignment artifact.
 REPEATS = 5
 SEED = 42
-# How many of the overall top features to check for rank stability across repeats (M5,
-# next_phase_plan.md section 4). 10 rather than every feature: with only REPEATS=5 rankers,
+# How many of the overall top features to check for rank stability across repeats.
+# 10 rather than every feature: with only REPEATS=5 rankers,
 # asking whether hundreds of near-zero-importance features keep a stable order is asking the
 # metric to resolve noise, not signal - the top-10 is the part of the ranking anyone would
 # actually read off a report.

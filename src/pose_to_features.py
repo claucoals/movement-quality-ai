@@ -3,11 +3,9 @@ video -> pose landmarks -> the same anatomical joint-angle feature schema REHAB2
 
 Front-end is MediaPipe Pose (fast, runs on a laptop, no GPU needed). Column names and summary
 statistics come from anatomical_features.py, the same module build_features_rehab24_anatomical.py
-uses - deliberate (next_phase_plan.md section 6, Gap 1): a Pilates clip run through this script
-produces the identical feature vector schema REHAB24's anatomical models are trained on, so
-"train on REHAB24, test on Pilates" (Tower 3 Experiment A) is possible instead of blocked by
-mismatched columns. Before this change, this file only computed 6 raw angles (knee/hip/elbow)
-with no ankle, shoulder, trunk-flexion, or knee-valgus - not the same feature space at all.
+uses - deliberate: a Pilates clip run through this script produces the identical feature vector
+schema REHAB24's anatomical models are trained on, so a model trained on REHAB24 can be tested
+on Pilates footage instead of being blocked by mismatched columns.
 
 Two angles need a landmark MediaPipe's 33-point model doesn't have directly:
   - l/r_shoulder_angle needs REHAB24's "neck" - approximated below as the shoulder midpoint.
@@ -20,11 +18,11 @@ Two angles need a landmark MediaPipe's 33-point model doesn't have directly:
     equivalent: expect this one column to correspond less precisely across the two sources
     than the others.
 
-knee_valgus carries the coronal-plane risk documented in next_phase_plan.md section 6, Gap 2:
-monocular RGB pose estimation is specifically less reliable for this angle than for
-sagittal-plane ones (systematic error/variability reported in the markerless-mocap validity
-literature) - the formula is identical to REHAB24's, the two inputs are not equally
-trustworthy. Frontal camera placement matters more for this feature than any other here.
+knee_valgus carries a coronal-plane risk: monocular RGB pose estimation is specifically less
+reliable for this angle than for sagittal-plane ones (systematic error/variability reported in
+the markerless-mocap validity literature) - the formula is identical to REHAB24's, the two
+inputs are not equally trustworthy. Frontal camera placement matters more for this feature
+than any other here.
 
 Usage:
     python pose_to_features.py --video path/to/clip.mp4 --out features.csv

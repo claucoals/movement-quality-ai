@@ -10,8 +10,8 @@ repeats: 20
 output: results/experiments/experiments.csv
 
 dataset:
-  name: rehab24_ex1_anatomical
-  features: data/features/rehab24/ex1/anatomical.csv
+  name: rehab24_ex5
+  features: data/features/rehab24/ex5/base.csv
   target: correct
   task: classification
   groups: subject

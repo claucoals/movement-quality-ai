@@ -1,9 +1,9 @@
 """
-M6a - the version of "prototype learning" REHAB24's data actually supports (see
-next_phase_plan.md section 5). Checked data/raw/rehab24/annotations.csv directly: it has
-`correctness` (binary) and `exercise_subtype` (which limb), no error-type label - so named
-archetypes ("Knee-Valgus Squat", "Trunk-Lean Squat") aren't buildable from this dataset alone.
-Those only become possible once Pilates data (M7) is collected with deliberate error types.
+The version of "prototype learning" REHAB24's data actually supports. Checked
+data/raw/rehab24/annotations.csv directly: it has `correctness` (binary) and
+`exercise_subtype` (which limb), no error-type label - so named archetypes
+("Knee-Valgus Squat", "Trunk-Lean Squat") aren't buildable from this dataset alone. Those
+only become possible once data with deliberate, labeled error types is collected.
 
 What REHAB24 does support, and what this script does:
 
@@ -62,9 +62,9 @@ def _score_and_test(score: pd.Series, correct: pd.Series) -> tuple[float, float,
 def composite_score(exercise: str) -> dict:
     """Blanket average of every deviation feature's percentile - the naive version of
     'distance to the correct prototype'. Averaging in ~30 near-zero-signal features alongside
-    the handful Gate 4 found significant dilutes the composite toward noise, same dilution
-    mechanism as the biophases SHAP ranking in build_attribution_map.py - measured directly
-    below via `refined_auc`, not assumed."""
+    the handful run_univariate_deviation.py found significant dilutes the composite toward
+    noise, same dilution mechanism as the biophases SHAP ranking in build_attribution_map.py -
+    measured directly below via `refined_auc`, not assumed."""
     df = load_deviation(exercise)
     feat_cols = [c for c in df.columns if c.startswith("deviation__")]
     score = df[feat_cols].rank(pct=True).mean(axis=1)
@@ -121,7 +121,7 @@ def main():
 
     scores = pd.DataFrame([composite_score(ex) for ex in exercises])
     print("Prototype-distance composite score (percentile-averaged, single scalar per rep) - "
-          "naive (all 36 features) vs refined (Gate-4-significant features only):")
+          "naive (all 36 features) vs refined (significant features only):")
     fmt = {c: "{:.3f}".format for c in ("naive_auc", "naive_d", "refined_auc", "refined_d")}
     fmt.update({c: "{:.4f}".format for c in ("naive_p", "refined_p")})
     print(scores.to_string(index=False, formatters=fmt))
