@@ -35,6 +35,7 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.model_selection import (GridSearchCV, KFold, StratifiedKFold,
                                      GroupKFold, StratifiedGroupKFold)
+from joblib import parallel_backend
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (balanced_accuracy_score, roc_auc_score,
@@ -175,41 +176,46 @@ def nested_cv(X, y, task="regression", seed=42, outer=5, inner=3, repeats=10, gr
     scoring = "neg_mean_absolute_error" if task == "regression" else "balanced_accuracy"
     results = {name: [] for name in build_models(task, seed)}
 
-    for repeat_i, fold_i, tr, te in _outer_splits(X, y, groups, task, outer, repeats, seed):
-        Xtr, Xte, ytr, yte = X.iloc[tr], X.iloc[te], y.iloc[tr], y.iloc[te]
-        groups_tr = groups.iloc[tr] if groups is not None else None
-        if groups is not None:
-            inner_cv = list(_outer_splits(Xtr, ytr, groups_tr, task, inner, 1, seed + repeat_i))
-            inner_cv = [(a, b) for _, _, a, b in inner_cv]
-        else:
-            inner_cv = (KFold(inner, shuffle=True, random_state=seed + repeat_i) if task == "regression"
-                        else StratifiedKFold(inner, shuffle=True, random_state=seed + repeat_i))
-        for name, (pipe, grid) in build_models(task, seed, repeat_i).items():
-            gs = GridSearchCV(pipe, grid, scoring=scoring, cv=inner_cv, n_jobs=N_JOBS)
-            gs.fit(Xtr, ytr)
-            pred = gs.predict(Xte)
-            if task == "regression":
-                spearman_rho, _ = spearmanr(yte, pred)
-                m = {"mae": mean_absolute_error(yte, pred), "r2": r2_score(yte, pred),
-                     "spearman": spearman_rho}
+    # One persistent worker pool for the whole run (up to ~300 GridSearchCV.fit() calls: outer
+    # x repeats x models), not one spun up and torn down per call - repeated pool creation is
+    # itself a plausible source of the memory growth that showed up as "worker stopped...
+    # memory leak" warnings and multi-hour blowups on later datasets in a sweep.
+    with parallel_backend("loky", n_jobs=N_JOBS):
+        for repeat_i, fold_i, tr, te in _outer_splits(X, y, groups, task, outer, repeats, seed):
+            Xtr, Xte, ytr, yte = X.iloc[tr], X.iloc[te], y.iloc[tr], y.iloc[te]
+            groups_tr = groups.iloc[tr] if groups is not None else None
+            if groups is not None:
+                inner_cv = list(_outer_splits(Xtr, ytr, groups_tr, task, inner, 1, seed + repeat_i))
+                inner_cv = [(a, b) for _, _, a, b in inner_cv]
             else:
-                proba = gs.predict_proba(Xte)[:, 1]
-                try:
-                    auc = roc_auc_score(yte, proba)
-                except ValueError:
-                    # only a single class in yte (possible with tiny/imbalanced group-held-out
-                    # folds) makes AUC undefined - anything else should surface, not hide as NaN
-                    auc = np.nan
-                m = {"bal_acc": balanced_accuracy_score(yte, pred), "auc": auc,
-                     # calibration (are predicted probabilities trustworthy, not just ranking)
-                     "brier": brier_score_loss(yte, proba),
-                     # single-number metric robust to the mild class imbalance some folds have
-                     "mcc": matthews_corrcoef(yte, pred)}
-            m["repeat"], m["fold"] = repeat_i + 1, fold_i + 1
-            results[name].append(m)
-            if verbose:
-                print(f"[repeat {repeat_i + 1} fold {fold_i + 1}] {name:8s} " +
-                      "  ".join(f"{k}={v:.3f}" for k, v in m.items() if k not in ("repeat", "fold")))
+                inner_cv = (KFold(inner, shuffle=True, random_state=seed + repeat_i) if task == "regression"
+                            else StratifiedKFold(inner, shuffle=True, random_state=seed + repeat_i))
+            for name, (pipe, grid) in build_models(task, seed, repeat_i).items():
+                gs = GridSearchCV(pipe, grid, scoring=scoring, cv=inner_cv)
+                gs.fit(Xtr, ytr)
+                pred = gs.predict(Xte)
+                if task == "regression":
+                    spearman_rho, _ = spearmanr(yte, pred)
+                    m = {"mae": mean_absolute_error(yte, pred), "r2": r2_score(yte, pred),
+                         "spearman": spearman_rho}
+                else:
+                    proba = gs.predict_proba(Xte)[:, 1]
+                    try:
+                        auc = roc_auc_score(yte, proba)
+                    except ValueError:
+                        # only a single class in yte (possible with tiny/imbalanced group-held-out
+                        # folds) makes AUC undefined - anything else should surface, not hide as NaN
+                        auc = np.nan
+                    m = {"bal_acc": balanced_accuracy_score(yte, pred), "auc": auc,
+                         # calibration (are predicted probabilities trustworthy, not just ranking)
+                         "brier": brier_score_loss(yte, proba),
+                         # single-number metric robust to the mild class imbalance some folds have
+                         "mcc": matthews_corrcoef(yte, pred)}
+                m["repeat"], m["fold"] = repeat_i + 1, fold_i + 1
+                results[name].append(m)
+                if verbose:
+                    print(f"[repeat {repeat_i + 1} fold {fold_i + 1}] {name:8s} " +
+                          "  ".join(f"{k}={v:.3f}" for k, v in m.items() if k not in ("repeat", "fold")))
 
     if verbose:
         print(f"\nSummary (mean +/- std over {outer} x {repeats} = {outer * repeats} outer splits)")
