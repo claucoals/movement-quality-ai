@@ -28,6 +28,7 @@ import pandas as pd
 import shap
 from shap.maskers import Independent as IndependentMasker
 from sklearn.model_selection import GridSearchCV
+from joblib import parallel_backend
 
 from quality_model import build_models, _outer_splits, N_JOBS
 
@@ -98,32 +99,37 @@ def run_exercise(exercise: str, family: str) -> tuple[pd.DataFrame, dict]:
     shap_by_repeat = np.zeros((REPEATS, n, len(feature_names)))
     n_folds_done = 0
 
-    for repeat_i, fold_i, tr, te in _outer_splits(X, y, groups, "classification", OUTER, REPEATS, SEED):
-        Xtr, Xte = X.iloc[tr], X.iloc[te]
-        ytr = y.iloc[tr]
-        groups_tr = groups.iloc[tr]
+    # One persistent worker pool for the whole exercise (same reasoning as quality_model.py's
+    # nested_cv: OUTER x REPEATS GridSearchCV.fit() calls each spinning up their own pool was
+    # a plausible contributor to the memory growth that caused multi-hour blowups in the main
+    # sweep before this fix).
+    with parallel_backend("loky", n_jobs=N_JOBS):
+        for repeat_i, fold_i, tr, te in _outer_splits(X, y, groups, "classification", OUTER, REPEATS, SEED):
+            Xtr, Xte = X.iloc[tr], X.iloc[te]
+            ytr = y.iloc[tr]
+            groups_tr = groups.iloc[tr]
 
-        inner_splits = list(_outer_splits(Xtr, ytr, groups_tr, "classification", INNER, 1, SEED + repeat_i))
-        inner_cv = [(a, b) for _, _, a, b in inner_splits]
+            inner_splits = list(_outer_splits(Xtr, ytr, groups_tr, "classification", INNER, 1, SEED + repeat_i))
+            inner_cv = [(a, b) for _, _, a, b in inner_splits]
 
-        gs = GridSearchCV(pipe_template, grid, scoring="balanced_accuracy", cv=inner_cv, n_jobs=N_JOBS)
-        gs.fit(Xtr, ytr)
-        best_pipe = gs.best_estimator_
+            gs = GridSearchCV(pipe_template, grid, scoring="balanced_accuracy", cv=inner_cv)
+            gs.fit(Xtr, ytr)
+            best_pipe = gs.best_estimator_
 
-        def predict_fn(arr, _pipe=best_pipe):
-            return _pipe.predict_proba(pd.DataFrame(arr, columns=pd.Index(feature_names)))[:, 1]
+            def predict_fn(arr, _pipe=best_pipe):
+                return _pipe.predict_proba(pd.DataFrame(arr, columns=pd.Index(feature_names)))[:, 1]
 
-        masker = IndependentMasker(Xtr.values, max_samples=Xtr.shape[0])
-        explainer = shap.Explainer(predict_fn, masker, feature_names=feature_names)
-        sv = explainer(Xte.values)
-        assert isinstance(sv, shap.Explanation), f"expected a single Explanation, got {type(sv)}"
+            masker = IndependentMasker(Xtr.values, max_samples=Xtr.shape[0])
+            explainer = shap.Explainer(predict_fn, masker, feature_names=feature_names)
+            sv = explainer(Xte.values)
+            assert isinstance(sv, shap.Explanation), f"expected a single Explanation, got {type(sv)}"
 
-        shap_sum[te] += sv.values
-        shap_count[te] += 1
-        shap_by_repeat[repeat_i, te] = sv.values
-        n_folds_done += 1
-        print(f"  repeat {repeat_i + 1} fold {fold_i + 1}: best_params={gs.best_params_}, "
-              f"explained {len(te)} held-out samples")
+            shap_sum[te] += sv.values
+            shap_count[te] += 1
+            shap_by_repeat[repeat_i, te] = sv.values
+            n_folds_done += 1
+            print(f"  repeat {repeat_i + 1} fold {fold_i + 1}: best_params={gs.best_params_}, "
+                  f"explained {len(te)} held-out samples")
 
     assert (shap_count == REPEATS).all(), "every sample must be held out exactly once per repeat"
     mean_shap = shap_sum / shap_count[:, None]
@@ -141,10 +147,15 @@ def run_exercise(exercise: str, family: str) -> tuple[pd.DataFrame, dict]:
     top_idx = np.argsort(overall_importance)[::-1][:TOP_K_STABILITY]
     # rank (1 = most important) each repeat's own feature ordering, restricted to the
     # features that are top-K overall - asks "do repeats agree on the order of the features
-    # that matter", not "do repeats agree on hundreds of near-zero features".
+    # that matter", not "do repeats agree on hundreds of near-zero features". Re-ranked
+    # within just this K-item subset, not the full feature count: Kendall's W requires each
+    # rater's values to be a 1..K permutation, not the global 1..n_features rank with columns
+    # merely filtered down to K - the latter isn't bounded to [0,1] (caught empirically: this
+    # produced W=1.151 on real data before this fix).
     per_repeat_importance = np.abs(shap_by_repeat).mean(axis=1)  # (REPEATS, n_features)
-    ranks = np.apply_along_axis(lambda v: len(v) - np.argsort(np.argsort(v)), 1, per_repeat_importance)
-    rank_matrix = ranks[:, top_idx].T  # (TOP_K_STABILITY, REPEATS)
+    top_importance = per_repeat_importance[:, top_idx]  # (REPEATS, TOP_K_STABILITY)
+    ranks = np.apply_along_axis(lambda v: len(v) - np.argsort(np.argsort(v)), 1, top_importance)
+    rank_matrix = ranks.T  # (TOP_K_STABILITY, REPEATS)
     w = kendalls_w(rank_matrix)
     stability = {"exercise": exercise, "family": family, "model": model_name,
                  "n_repeats": REPEATS, "top_k": len(top_idx), "kendalls_w": w,
