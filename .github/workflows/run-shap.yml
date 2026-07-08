@@ -1,0 +1,55 @@
+name: Run SHAP
+
+# Same reasoning as run-experiments.yml: dedicated, consistent runners instead of a local
+# machine, one independent job per (family, exercise) pair instead of one long sequential
+# process. Needs results/experiments/experiments.csv (committed, not gitignored) to know
+# which model won each exercise/family - see run_shap.py's pick_winning_model().
+on:
+  workflow_dispatch:
+    inputs:
+      families:
+        description: "Comma-separated families to run (default: anatomical,biophases,deviation)"
+        required: false
+        default: "anatomical,biophases,deviation"
+
+jobs:
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      combos: ${{ steps.gen.outputs.combos }}
+    steps:
+      - id: gen
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, os
+          families = [f.strip() for f in os.environ["FAMILIES"].split(",") if f.strip()]
+          exercises = [f"Ex{i}" for i in range(1, 7)]
+          combos = [{"family": fam, "exercise": ex} for fam in families for ex in exercises]
+          print("combos=" + json.dumps(combos))
+          EOF
+        env:
+          FAMILIES: ${{ inputs.families }}
+
+  run-shap:
+    needs: generate-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 18
+      matrix:
+        combo: ${{ fromJson(needs.generate-matrix.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy pandas scikit-learn scipy shap pyyaml
+      - name: Run SHAP for ${{ matrix.combo.family }} / ${{ matrix.combo.exercise }}
+        run: python src/run_shap.py --exercise ${{ matrix.combo.exercise }} --family ${{ matrix.combo.family }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shap-${{ matrix.combo.family }}-${{ matrix.combo.exercise }}
+          path: |
+            results/shap/rehab24_${{ matrix.combo.family }}.csv
+            results/shap/rehab24_${{ matrix.combo.family }}_stability.csv
+          retention-days: 14

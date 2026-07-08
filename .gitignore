@@ -4,5 +4,8 @@ __pycache__/
 *.pyc
 .venv/
 .ipynb_checkpoints/
-results/
+results/*
+!results/experiments/
+results/experiments/*
+!results/experiments/experiments.csv
 sweep*.log
