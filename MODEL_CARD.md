@@ -95,8 +95,11 @@ std, and a 95% bootstrap CI over outer folds) and plots.
   vs dummy 0.509), and it never wins the head-to-head against the other families on any
   exercise. 36 correlated phase x joint features against ~50-70 training samples is a plausible
   reason: SHAP-ranking stability for this family (Kendall's W across repeats, see
-  Interpretability) is also consistently the weakest of the three interpretable families,
-  which is the same underlying small-N problem showing up twice.
+  Interpretability) is the lowest on average of the three interpretable families (mean W 0.58
+  vs anatomical 0.68, biophases 0.73) - but not uniformly: it is the single most stable ranking
+  of any family on ex1 (0.77) and ex3 (0.96), and only the outright weakest on 3 of 6 exercises.
+  A tendency worth noting, not a rule; the same underlying small-N problem showing up twice is a
+  plausible read, not a settled one.
 - **Naive vs kinematic phase segmentation, ex1**: `base` 0.906 > `biophases` 0.850 >
   `phases` (equal-thirds) 0.833 - the naive time-split family never beats the family it was
   built on top of; turnaround-based segmentation recovers some of that gap but doesn't
